@@ -1,5 +1,5 @@
 /* Service worker — cachea el "app shell" para que funcione sin internet. */
-const CACHE = 'super-profe-v9';
+const CACHE = 'super-profe-v10';
 const ASSETS = [
   './', './index.html', './style.css', './app.js', './data.js',
   './xlsx.full.min.js', './manifest.webmanifest',

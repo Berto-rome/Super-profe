@@ -310,6 +310,33 @@ td.recwrap{padding:0}
 .cl-obs:focus{outline:none;border-color:var(--brand);background:var(--surface)}
 .cl-detail-acts{display:flex;gap:9px;margin:16px 0 6px}
 .cl-detail-acts .btn{flex:1}
+/* --- Ficha del alumno: alergias, datos, autorizaciones, documentos --- */
+.hide{display:none!important}
+.al-alert{display:flex;align-items:center;gap:11px;background:linear-gradient(#fff,#fdecec);border:1px solid #f3c3bd;border-left:5px solid #e0574a;border-radius:14px;padding:11px 13px;margin-bottom:13px;box-shadow:var(--shadow)}
+.al-alert .ic{font-size:20px;flex:0 0 auto}
+.al-alert b{display:block;font-size:11px;font-weight:800;color:#b83a2e;letter-spacing:.3px;text-transform:uppercase}
+.al-alert span{display:block;font-size:14.5px;font-weight:800;color:#402f2a;line-height:1.3}
+.mas-card .fl{margin-bottom:12px}.mas-card .fl:last-child{margin-bottom:0}
+.cl-badge.lock{background:var(--field);letter-spacing:0}
+.docbody{margin-top:4px}
+.doc-item{display:flex;align-items:center;gap:11px;padding:9px 0;border-top:1px solid var(--line)}
+.doc-th{width:46px;height:46px;flex:0 0 auto;border-radius:10px;object-fit:cover;border:1px solid var(--line);background:var(--field)}
+.doc-th.none{display:flex;align-items:center;justify-content:center;font-size:20px}
+img.doc-th{cursor:zoom-in}
+.doc-b{flex:1;min-width:0}
+.doc-b b{display:block;font-size:14.5px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.doc-b span{font-size:12.5px;font-weight:700;color:var(--ink2)}
+.doc-x{flex:0 0 auto;width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--surface);font-size:15px;cursor:pointer;color:var(--ink2);font-family:var(--font)}
+.doc-x:active{transform:scale(.92)}
+.doc-prev{width:100%;max-height:190px;object-fit:contain;border-radius:12px;border:1px solid var(--line);margin-top:4px}
+.doc-full{width:100%;max-height:70vh;object-fit:contain;border-radius:14px;border:1px solid var(--line);margin:4px 0}
+.pin-err{font-size:12.5px;font-weight:800;color:#cc3333;min-height:16px;margin:-4px 0 6px}
+/* --- Tarjeta de cumpleaños en Inicio (fondo siempre claro) --- */
+.card.bday-card{background:linear-gradient(140deg,#fff,#ffe6f1);border:1px solid #f6c9dd}
+.card.bday-card .ttl{color:#54233f}
+.card.bday-card .sub2{color:#9a5878}
+.cd.bday{background:#ffd3e6}
+.cd.bday b,.cd.bday span{color:#b0326f;opacity:1}
 .ag-card.done{opacity:.6}.ag-card.done .ag-t{text-decoration:line-through}
 .ag-ic.wa{background:var(--mint-bg);border-color:#c7e6d5}
 

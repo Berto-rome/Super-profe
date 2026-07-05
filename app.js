@@ -201,6 +201,7 @@ function renderInicio(app){
   const px = proximos();
   wrap.appendChild(cardExamen(px.examen));
   if(px.otro) wrap.appendChild(cardTarea(px.otro));
+  const bd = cumpleAlertas(); if(bd.length) wrap.appendChild(cardCumple(bd));
   const t = todayIdx();
   app.appendChild(el('div','sp-sec', t>=0 ? 'Tus clases de hoy' : 'Tus clases del lunes'));
   app.appendChild(listaHoy(me));
@@ -244,6 +245,15 @@ function cardTarea(it){ const tp=TIPOS[it.tipo]||TIPOS.nota; const c=el('div','c
   c.innerHTML='<div class="hdrow"><div class="emoji">'+tp.emoji+'</div><div><div class="ttl">'+escapeHtml(it.titulo)+'</div><div class="sub2">'+tp.label+' · '+fechaCorta(it)+'</div></div><div class="when">'+when+'</div></div>';
   c.onclick=()=>setTab('agenda'); return c;
 }
+function cardCumple(lista){
+  const n=lista[0], dd=n.dd, mas=lista.length-1;
+  const c=el('div','card bday-card tap');
+  const num=dd===0?'🎉':dd, lab=dd===0?'HOY':(dd===1?'MAÑANA':'DÍAS');
+  const sub=(dd<=1?'¡Prepara la fiesta! 🎉':'Cumple pronto')+' · '+escapeHtml(n.grupo)+(mas>0?(' · +'+mas+' esta semana'):'');
+  c.innerHTML='<div class="hdrow"><div class="emoji" style="background:#ffe1ef">🎂</div><div><div class="k" style="color:#c0417f">Cumpleaños</div><div class="ttl">'+escapeHtml(n.nombre)+'</div><div class="sub2">'+sub+'</div></div><div class="cd bday"><b>'+num+'</b><span>'+lab+'</span></div></div>';
+  c.onclick=()=>{ st.grupo=n.grupo; st.alumno=n.id; st.claseView='alumnos'; setTab('clase'); };
+  return c;
+}
 function listaHoy(me){ const wrap=el('div','today-list'); const t=todayIdx(); const day=t>=0?t:0; const box=me?D.prof[me]:null;
   if(!box){ wrap.appendChild(el('div','empty','Carga tu horario en «Más» para ver tus clases.')); return wrap; }
   const has=D.sesiones.some(s=>!s.recreo&&box.A[day+'-'+s.id]);
@@ -257,6 +267,7 @@ let CL = (()=>{ try{ return Object.assign({}, DEF_CLASE, JSON.parse(localStorage
 const saveCL = () => { try{ localStorage.setItem('clase_data', JSON.stringify(CL)); }catch(e){} };
 st.claseView = 'alumnos';   // alumnos | deberes | salidas
 st.alumno = null;           // id del alumno abierto (pantalla de detalle)
+st.docsUnlocked = false;    // PIN de documentos desbloqueado en esta sesión
 function clGrupo(){ if(!CL.grupos.length) return null; if(!CL.grupos.includes(st.grupo)) st.grupo = CL.grupos[0]; return st.grupo; }
 const alumnosDe = g => (CL.alumnos[g] = CL.alumnos[g] || []);
 const asigDe    = g => (CL.asig[g]    = CL.asig[g]    || []);
@@ -272,6 +283,59 @@ function cumpleTxt(iso){ if(!iso)return ''; const p=String(iso).split('-').map(N
 function fechaCortaISO(iso){ if(!iso)return ''; const p=String(iso).split('-').map(Number); const dt=new Date(p[0],(p[1]||1)-1,p[2]||1); return dt.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'}); }
 function inicial(nombre){ return (String(nombre||'?').trim().charAt(0)||'?').toUpperCase(); }
 function waShare(texto){ try{ window.open('https://wa.me/?text='+encodeURIComponent(texto),'_blank'); }catch(e){} }
+
+// ---------- cumpleaños próximos (alerta en Inicio: 1 semana antes + día antes) ----------
+function cumpleAlertas(){
+  const out=[];
+  (CL.grupos||[]).forEach(g=>{ alumnosDe(g).forEach(al=>{ const dd=cumpleDias(al.cumple); if(dd!=null && dd<=7){ out.push({nombre:al.nombre, grupo:g, id:al.id, dd:dd}); } }); });
+  return out.sort((a,b)=>a.dd-b.dd);
+}
+// ---------- foto del DNI: comprimir para no llenar el móvil ----------
+function comprimirFoto(file){
+  return new Promise((res,rej)=>{
+    if(!file){ res(''); return; }
+    const fr=new FileReader();
+    fr.onerror=()=>rej(fr.error||new Error('lectura'));
+    fr.onload=()=>{ const img=new Image();
+      img.onerror=()=>rej(new Error('imagen'));
+      img.onload=()=>{ const M=900; let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+        if(w>M||h>M){ const r=Math.min(M/w,M/h); w=Math.round(w*r); h=Math.round(h*r); }
+        const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        try{ res(cv.toDataURL('image/jpeg',0.6)); }catch(e){ rej(e); } };
+      img.src=fr.result; };
+    fr.readAsDataURL(file);
+  });
+}
+// guardar la clase avisando si el almacenamiento del móvil está lleno (fotos pesadas)
+function saveCLsafe(){ try{ localStorage.setItem('clase_data', JSON.stringify(CL)); return true; }catch(e){ alert('No se ha podido guardar: el almacenamiento del móvil está lleno. Borra alguna foto de DNI para hacer sitio.'); return false; } }
+// ---------- PIN de la zona de documentos (cifrado SHA-256, no en claro) ----------
+async function sha256(txt){ const b=new TextEncoder().encode(String(txt)); const h=await crypto.subtle.digest('SHA-256',b); return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+function openPinGate(onOk){
+  openBottom('<div class="form-h">🔒 Zona protegida</div>'+
+    '<p class="cl-hint" style="margin:.1rem 0 .7rem">Introduce el PIN para ver los documentos de recogida.</p>'+
+    '<label class="fl">PIN<input id="pin_i" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="••••"></label>'+
+    '<div class="pin-err" id="pin_err"></div>'+
+    '<div class="form-actions"><button class="btn ghost" id="pin_c">Cancelar</button><button class="btn primary" id="pin_ok">Entrar</button></div>', false);
+  const b=$('#sheetBody'); const inp=$('#pin_i',b); setTimeout(()=>inp.focus(),60);
+  $('#pin_c',b).onclick=closeSheet;
+  const go=async()=>{ const h=await sha256(inp.value); if(h===SET.pinDocs){ st.docsUnlocked=true; closeSheet(); onOk&&onOk(); } else { $('#pin_err',b).textContent='PIN incorrecto.'; inp.value=''; inp.focus(); } };
+  $('#pin_ok',b).onclick=go; inp.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } };
+}
+function openPinSet(onDone){
+  const tiene=!!SET.pinDocs;
+  openBottom('<div class="form-h">'+(tiene?'Cambiar o quitar PIN':'Proteger con PIN')+'</div>'+
+    '<p class="cl-hint" style="margin:.1rem 0 .7rem">Un PIN de 4 dígitos protege los documentos de recogida (DNI y fotos). Se guarda cifrado en tu móvil.</p>'+
+    (tiene?'<label class="fl">PIN actual<input id="p_old" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></label>':'')+
+    '<label class="fl">Nuevo PIN (4 dígitos)<input id="p_new" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="••••"></label>'+
+    '<div class="pin-err" id="p_err"></div>'+
+    '<div class="form-actions">'+(tiene?'<button class="btn danger" id="p_del">Quitar PIN</button>':'')+'<button class="btn ghost" id="p_c">Cancelar</button><button class="btn primary" id="p_ok">Guardar</button></div>', false);
+  const b=$('#sheetBody'); $('#p_c',b).onclick=closeSheet; const err=m=>{ $('#p_err',b).textContent=m; };
+  const chkOld=async()=>{ if(!tiene)return true; const h=await sha256($('#p_old',b).value); if(h!==SET.pinDocs){ err('El PIN actual no es correcto.'); return false; } return true; };
+  const del=$('#p_del',b); if(del)del.onclick=async()=>{ if(!(await chkOld()))return; SET.pinDocs=''; saveSet(); st.docsUnlocked=true; closeSheet(); onDone&&onDone(); };
+  $('#p_ok',b).onclick=async()=>{ if(!(await chkOld()))return; const nv=$('#p_new',b).value.trim(); if(!/^\d{4,8}$/.test(nv)){ err('El PIN debe tener entre 4 y 8 dígitos.'); return; } SET.pinDocs=await sha256(nv); saveSet(); st.docsUnlocked=true; closeSheet(); onDone&&onDone(); };
+}
+function openFoto(src){ openBottom('<div class="form-h">Foto del DNI</div><img class="doc-full" src="'+src+'" alt="DNI"><div class="form-actions"><button class="btn ghost" id="f_c">Cerrar</button></div>', true); $('#f_c',$('#sheetBody')).onclick=closeSheet; }
 
 function renderClase(app){
   const g = clGrupo();
@@ -313,7 +377,7 @@ function renderAlumnos(app,g){
   const wrap=el('div','al-list'); app.appendChild(wrap);
   arr.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).forEach(al=>{
     const dd=cumpleDias(al.cumple);
-    const sub=[ al.cumple?cumpleTxt(al.cumple):'', (al.faltas&&al.faltas.length)?('🚪 '+al.faltas.length+' falta'+(al.faltas.length>1?'s':'')):'' ].filter(Boolean).join(' · ');
+    const sub=[ al.cumple?cumpleTxt(al.cumple):'', (al.faltas&&al.faltas.length)?('🚪 '+al.faltas.length+' falta'+(al.faltas.length>1?'s':'')):'', (al.alergias&&al.alergias.trim())?'⚠️ alergias':'' ].filter(Boolean).join(' · ');
     const c=el('div','al-card'+(dd===0?' bday':''),
       '<div class="al-av">'+escapeHtml(inicial(al.nombre))+'</div>'+
       '<div class="al-body"><div class="al-name">'+escapeHtml(al.nombre)+'</div>'+(sub?'<div class="al-sub">'+sub+'</div>':'')+'</div>'+
@@ -340,22 +404,35 @@ function renderAlumnoDetail(app,g,al){
   app.appendChild(head);
   const wrap=el('div','cl-detail'); app.appendChild(wrap);
 
+  // campos nuevos (migración suave para alumnos antiguos)
+  al.alergias=al.alergias||''; al.sitFam=al.sitFam||'sin'; al.sitFamNota=al.sitFamNota||''; al.faltas=al.faltas||[]; al.recogida=al.recogida||[]; al.obs=al.obs||'';
+
+  // Aviso de alergias (rojo, bien visible para un sustituto)
+  if(al.alergias.trim()) wrap.appendChild(el('div','al-alert','<span class="ic">⚠️</span><div><b>Alergias</b><span>'+escapeHtml(al.alergias)+'</span></div>'));
+
   // Comportamiento
   wrap.appendChild(el('div','sp-sec','Comportamiento'));
   const stats=el('div','cl-stats');
   stats.appendChild(statTile('pos','👍','Positivos',al.pos||0,()=>{al.pos=(al.pos||0)+1;},()=>{al.pos=Math.max(0,(al.pos||0)-1);}));
   stats.appendChild(statTile('neg','👎','Negativos',al.neg||0,()=>{al.neg=(al.neg||0)+1;},()=>{al.neg=Math.max(0,(al.neg||0)-1);}));
   wrap.appendChild(stats);
-  // Faltas
-  const faltas=(al.faltas=al.faltas||[]);
-  const fcard=el('div','mas-card');
-  const hoy=isoOf(new Date()); const yaHoy=faltas.includes(hoy);
-  fcard.innerHTML='<div class="cl-row"><span class="ic">🚪</span><b>Faltas de asistencia</b><span class="cl-badge">'+faltas.length+'</span></div>';
-  const fbtn=el('button','btn ghost block', yaHoy?'✓ Falta marcada hoy (quitar)':'Marcar falta de hoy');
-  fbtn.onclick=()=>{ const i=faltas.indexOf(hoy); if(i>=0)faltas.splice(i,1); else faltas.push(hoy); saveCL(); render(); };
-  fcard.appendChild(fbtn);
-  if(faltas.length){ const fl=el('div','cl-faltas'); faltas.slice().sort().reverse().forEach(f=>{ const t=el('span','cl-ftag',fechaCortaISO(f)+' ✕'); t.onclick=()=>{ const i=faltas.indexOf(f); if(i>=0)faltas.splice(i,1); saveCL(); render(); }; fl.appendChild(t); }); fcard.appendChild(fl); }
-  wrap.appendChild(fcard);
+
+  // Datos del alumno: alergias + situación familiar
+  wrap.appendChild(el('div','sp-sec','Datos del alumno'));
+  const dc=el('div','mas-card');
+  const laA=el('label','fl','Alergias <span class="opt">(si tiene)</span>');
+  const inA=el('input'); inA.type='text'; inA.value=al.alergias; inA.placeholder='Ej.: frutos secos, lactosa…';
+  inA.oninput=()=>{ al.alergias=inA.value; saveCL(); };
+  laA.appendChild(inA); dc.appendChild(laA);
+  const laS=el('label','fl','Situación familiar');
+  const selS=el('select'); selS.innerHTML='<option value="sin">Sin observaciones</option><option value="particular">Situación particular</option>'; selS.value=al.sitFam;
+  laS.appendChild(selS); dc.appendChild(laS);
+  const noteW=el('label','fl'+(al.sitFam==='particular'?'':' hide'),'Nota <span class="opt">(privada, solo para el profe)</span>');
+  const inN=el('textarea'); inN.rows=2; inN.value=al.sitFamNota; inN.placeholder='Detalle de la situación particular…';
+  inN.oninput=()=>{ al.sitFamNota=inN.value; saveCL(); };
+  noteW.appendChild(inN); dc.appendChild(noteW);
+  selS.onchange=()=>{ al.sitFam=selS.value; saveCL(); noteW.classList.toggle('hide', selS.value!=='particular'); };
+  wrap.appendChild(dc);
 
   // Cuaderno de notas
   wrap.appendChild(el('div','sp-sec','Cuaderno de notas'));
@@ -395,10 +472,45 @@ function renderAlumnoDetail(app,g,al){
   const tb=el('button','btn ghost block',(tut.fecha||tut.fam)?'Editar tutoría':'Registrar tutoría'); tb.onclick=()=>tutForm(g,al); tc.appendChild(tb);
   wrap.appendChild(tc);
 
+  // Autorizaciones (faltas de asistencia + documentos de recogida con PIN)
+  wrap.appendChild(el('div','sp-sec','Autorizaciones'));
+  const faltas=al.faltas;
+  const fcard=el('div','mas-card');
+  const hoy=isoOf(new Date()); const yaHoy=faltas.includes(hoy);
+  fcard.innerHTML='<div class="cl-row"><span class="ic">🚪</span><b>Faltas de asistencia</b><span class="cl-badge">'+faltas.length+'</span></div>';
+  const fbtn=el('button','btn ghost block', yaHoy?'✓ Falta marcada hoy (quitar)':'Marcar falta de hoy');
+  fbtn.onclick=()=>{ const i=faltas.indexOf(hoy); if(i>=0)faltas.splice(i,1); else faltas.push(hoy); saveCL(); render(); };
+  fcard.appendChild(fbtn);
+  if(faltas.length){ const fl=el('div','cl-faltas'); faltas.slice().sort().reverse().forEach(f=>{ const t=el('span','cl-ftag',fechaCortaISO(f)+' ✕'); t.onclick=()=>{ const i=faltas.indexOf(f); if(i>=0)faltas.splice(i,1); saveCL(); render(); }; fl.appendChild(t); }); fcard.appendChild(fl); }
+  wrap.appendChild(fcard);
+  // Documentos de recogida (protegidos por PIN)
+  const dcard=el('div','mas-card');
+  dcard.innerHTML='<div class="cl-row"><span class="ic">🪪</span><b>Quién puede recoger al niño</b>'+(SET.pinDocs?'<span class="cl-badge lock">🔒</span>':'')+'</div>';
+  wrap.appendChild(dcard);
+  const pintaDocs=()=>{
+    Array.from(dcard.querySelectorAll('.docbody')).forEach(n=>n.remove());
+    const body=el('div','docbody'); dcard.appendChild(body);
+    const rec=al.recogida;
+    if(!rec.length) body.appendChild(el('div','cl-hint','Nadie anotado todavía. Añade a los familiares autorizados con su DNI (y foto opcional).'));
+    rec.forEach(r=>{
+      const it=el('div','doc-item',
+        (r.foto?'<img class="doc-th" src="'+r.foto+'" alt="DNI">':'<div class="doc-th none">🪪</div>')+
+        '<div class="doc-b"><b>'+escapeHtml(r.nombre||'—')+'</b><span>'+escapeHtml([r.parentesco,r.dni].filter(Boolean).join(' · '))+'</span></div>'+
+        '<button class="doc-x" aria-label="Editar familiar">✎</button>');
+      it.querySelector('.doc-x').onclick=()=>recForm(g,al,r,pintaDocs);
+      const th=it.querySelector('.doc-th'); if(r.foto&&th) th.onclick=()=>openFoto(r.foto);
+      body.appendChild(it);
+    });
+    const add=el('button','btn ghost block','＋ Añadir familiar'); add.onclick=()=>recForm(g,al,null,pintaDocs); body.appendChild(add);
+    const pinb=el('button','btn ghost block', SET.pinDocs?'🔒 Cambiar o quitar PIN':'🔒 Proteger con PIN'); pinb.onclick=()=>openPinSet(render); body.appendChild(pinb);
+  };
+  if(!SET.pinDocs || st.docsUnlocked){ pintaDocs(); }
+  else { const lb=el('button','btn ghost block','🔓 Ver documentos (PIN)'); lb.onclick=()=>openPinGate(render); dcard.appendChild(lb); }
+
   // Observaciones
   wrap.appendChild(el('div','sp-sec','Observaciones'));
   const oc=el('div','mas-card');
-  const ta=el('textarea','cl-obs'); ta.rows=3; ta.placeholder='Notas sobre el alumno (alergias, apoyos, lo que quieras recordar)…'; ta.value=al.obs||'';
+  const ta=el('textarea','cl-obs'); ta.rows=3; ta.placeholder='Para recordar o para poner en contexto a un sustituto (apoyos, carácter, lo que convenga saber)…'; ta.value=al.obs||'';
   ta.oninput=()=>{ al.obs=ta.value; saveCL(); };
   oc.appendChild(ta); wrap.appendChild(oc);
 
@@ -465,17 +577,37 @@ function gForm(){
   $('#g_ok',b).onclick=()=>{ const n=inp.value.trim(); if(!n){ inp.focus(); return; } if(!CL.grupos.includes(n))CL.grupos.push(n); st.grupo=n; st.alumno=null; st.claseView='alumnos'; saveCL(); closeSheet(); render(); };
 }
 function alForm(g,al){
-  const it=Object.assign({nombre:'',cumple:''}, al||{});
+  const it=Object.assign({nombre:'',cumple:'',alergias:''}, al||{});
   openBottom('<div class="form-h">'+(al?'Editar alumno':'Nuevo alumno')+'</div>'+
     '<label class="fl">Nombre y apellidos<input id="a_n" type="text" value="'+escapeHtml(it.nombre)+'" placeholder="Ej.: Lucía Martín" autocomplete="off"></label>'+
     '<label class="fl">Cumpleaños <span class="opt">(opcional)</span><input id="a_c" type="date" value="'+(it.cumple||'')+'"></label>'+
+    '<label class="fl">Alergias <span class="opt">(si tiene)</span><input id="a_al" type="text" value="'+escapeHtml(it.alergias||'')+'" placeholder="Ej.: frutos secos" autocomplete="off"></label>'+
     '<div class="form-actions">'+(al?'<button class="btn danger" id="a_del">Borrar</button>':'')+'<button class="btn ghost" id="a_can">Cancelar</button><button class="btn primary" id="a_ok">Guardar</button></div>', false);
   const b=$('#sheetBody'); const inp=$('#a_n',b); if(!al)setTimeout(()=>inp.focus(),60);
   $('#a_can',b).onclick=closeSheet;
   const del=$('#a_del',b); if(del)del.onclick=()=>{ CL.alumnos[g]=alumnosDe(g).filter(a=>a.id!==al.id); saveCL(); if(st.alumno===al.id)st.alumno=null; closeSheet(); render(); };
-  $('#a_ok',b).onclick=()=>{ const n=inp.value.trim(); if(!n){ inp.focus(); return; } const cumple=$('#a_c',b).value;
-    if(al){ al.nombre=n; al.cumple=cumple; } else { alumnosDe(g).push({id:nid('a'),nombre:n,cumple,pos:0,neg:0,faltas:[],notas:{},tutoria:{},obs:''}); }
+  $('#a_ok',b).onclick=()=>{ const n=inp.value.trim(); if(!n){ inp.focus(); return; } const cumple=$('#a_c',b).value; const alg=$('#a_al',b).value.trim();
+    if(al){ al.nombre=n; al.cumple=cumple; al.alergias=alg; } else { alumnosDe(g).push({id:nid('a'),nombre:n,cumple,alergias:alg,pos:0,neg:0,faltas:[],recogida:[],sitFam:'sin',sitFamNota:'',notas:{},tutoria:{},obs:''}); }
     saveCL(); closeSheet(); render(); };
+}
+function recForm(g,al,item,after){
+  const it=Object.assign({nombre:'',parentesco:'',dni:'',foto:''}, item||{});
+  openBottom('<div class="form-h">'+(item?'Editar familiar':'Familiar autorizado')+'</div>'+
+    '<label class="fl">Nombre<input id="r_n" type="text" value="'+escapeHtml(it.nombre)+'" placeholder="Ej.: Ana Martín" autocomplete="off"></label>'+
+    '<label class="fl">Parentesco <span class="opt">(opcional)</span><input id="r_p" type="text" value="'+escapeHtml(it.parentesco)+'" placeholder="Madre, abuelo, tía…" autocomplete="off"></label>'+
+    '<label class="fl">DNI <span class="opt">(opcional)</span><input id="r_d" type="text" value="'+escapeHtml(it.dni)+'" placeholder="00000000A" autocomplete="off"></label>'+
+    '<label class="fl">Foto del DNI <span class="opt">(opcional)</span><input id="r_f" type="file" accept="image/*"></label>'+
+    '<div id="r_prev">'+(it.foto?'<img class="doc-prev" src="'+it.foto+'" alt="DNI">':'')+'</div>'+
+    '<div class="form-actions">'+(item?'<button class="btn danger" id="r_del">Borrar</button>':'')+'<button class="btn ghost" id="r_c">Cancelar</button><button class="btn primary" id="r_ok">Guardar</button></div>', false);
+  const b=$('#sheetBody'); let foto=it.foto;
+  $('#r_c',b).onclick=closeSheet;
+  $('#r_f',b).onchange=async e=>{ const f=e.target.files&&e.target.files[0]; if(!f)return; try{ foto=await comprimirFoto(f); $('#r_prev',b).innerHTML='<img class="doc-prev" src="'+foto+'" alt="DNI">'; }catch(err){ alert('No se pudo procesar la foto. Prueba con otra.'); } };
+  const del=$('#r_del',b); if(del)del.onclick=()=>{ const i=al.recogida.indexOf(item); if(i>=0)al.recogida.splice(i,1); saveCLsafe(); closeSheet(); after&&after(); };
+  $('#r_ok',b).onclick=()=>{ const n=$('#r_n',b).value.trim(); if(!n){ $('#r_n',b).focus(); return; }
+    const rec={id:item?item.id:nid('r'), nombre:n, parentesco:$('#r_p',b).value.trim(), dni:$('#r_d',b).value.trim(), foto:foto||''};
+    if(item){ const bak=Object.assign({},item); Object.assign(item,rec); if(!saveCLsafe()){ Object.assign(item,bak); return; } }
+    else { al.recogida.push(rec); if(!saveCLsafe()){ al.recogida.pop(); return; } }
+    closeSheet(); after&&after(); };
 }
 function asigForm(g){
   openBottom('<div class="form-h">Nueva asignatura</div>'+
