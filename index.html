@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FBF7F1">
+  <title>Super Profe</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Super Profe">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="wrap">
+    <div id="installBanner" class="install-banner" hidden>
+      <div class="ib-ic" aria-hidden="true">⤓</div>
+      <div class="ib-tx"><b>Instala Super Profe</b><span>Añádela a tu pantalla de inicio</span></div>
+      <button id="installBtn" class="ib-btn">Instalar</button>
+      <button id="installClose" class="ib-x" aria-label="Ahora no">✕</button>
+    </div>
+    <div id="app"></div>
+  </div>
+
+  <nav class="nav" id="nav" aria-label="Secciones">
+    <button data-tab="inicio" aria-current="page"><span class="i">🏠</span><span>Inicio</span></button>
+    <button data-tab="horario" aria-current="false"><span class="i">📅</span><span>Horario</span></button>
+    <button data-tab="agenda" aria-current="false"><span class="i">🗒️</span><span>Agenda</span></button>
+    <button data-tab="clase" aria-current="false"><span class="i">🧑‍🏫</span><span>Clase</span></button>
+    <button data-tab="mas" aria-current="false"><span class="i">⚙️</span><span>Más</span></button>
+  </nav>
+
+  <div class="scrim" id="scrim"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Detalle">
+    <div class="grab"></div>
+    <div id="sheetBody"></div>
+    <button class="sh-close" id="sheetClose">Cerrar</button>
+  </div>
+
+  <script src="xlsx.full.min.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
