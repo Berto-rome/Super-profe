@@ -395,6 +395,7 @@ button.bar-p::after{content:" ✎";font-size:9px;opacity:.7}
 .bsum{font-size:12.5px;font-weight:800;border-radius:10px;padding:8px 11px;margin-bottom:11px;text-align:center}
 .bsum.ok{color:#1e6f4c;background:#e6f4ec;border:1px solid #c7e6d5}
 .bsum.warn{color:#8a5a1a;background:#fbefd9;border:1px solid #ecd6a8}
+.bsum.bad{color:#b23327;background:#fdeceb;border:1px solid #f4cfc8}
 /* --- Importar notas desde Excel --- */
 .imp-notas{display:block;margin:12px 18px 2px;width:calc(100% - 36px);border:1px solid var(--line);background:var(--surface);color:var(--ink);font-family:var(--font);font-size:14px;font-weight:800;padding:12px;border-radius:13px;cursor:pointer;box-shadow:var(--shadow)}
 .imp-notas:active{transform:scale(.99)}

@@ -570,16 +570,17 @@ function fillFinalCard(card,al,g,as){
 function baremoForm(g,as){
   const bars=baremosDe(g,as).map(b=>({id:b.id,nombre:b.nombre,peso:b.peso}));
   const sumaDe=()=>bars.reduce((a,b)=>a+(Number(b.peso)||0),0);
-  const sumTxt=s=> s===100 ? '✓ Suman 100%' : (s<100 ? ('Suman '+s+'% · faltan '+(100-s)+' para 100') : ('Suman '+s+'% · te pasas '+(s-100)+' de 100'));
-  const draw=()=>{ const rows=bars.map((b,i)=>'<div class="brow" data-i="'+i+'"><input class="bnombre" value="'+escapeHtml(String(b.nombre))+'" placeholder="Categoría" autocomplete="off"><input class="bpeso" inputmode="numeric" value="'+escapeHtml(String(b.peso))+'"><span class="bpct">%</span><button class="bdel" aria-label="Quitar categoría">✕</button></div>').join('');
+  const sumTxt=s=> s===100 ? '✓ Suman 100%' : (s<100 ? ('Suman '+s+'% · faltan '+(100-s)+' para 100') : ('Suman '+s+'% · te pasas '+(s-100)+' — no puede pasar de 100'));
+  const sumCls=s=> s===100 ? 'ok' : (s>100 ? 'bad' : 'warn');
+  const draw=()=>{ const rows=bars.map((b,i)=>'<div class="brow" data-i="'+i+'"><input class="bnombre" value="'+escapeHtml(String(b.nombre))+'" placeholder="Categoría (Exámenes, Libreta…)" autocomplete="off"><input class="bpeso" inputmode="numeric" value="'+escapeHtml(String(b.peso))+'"><span class="bpct">%</span><button class="bdel" aria-label="Quitar categoría">✕</button></div>').join('');
     const s=sumaDe();
     return '<div class="form-h">Baremos · '+escapeHtml(as)+'</div>'+
-      '<p class="cl-hint" style="margin:.1rem 0 .5rem">El % de cada categoría lo pones <b>tú</b> (pon <b>0</b> en lo que no valores, o deja solo Exámenes). <b>Deben sumar 100.</b> Cada nota de la evaluación = media de cada categoría × su %.</p>'+
-      '<div class="bsum '+(s===100?'ok':'warn')+'" id="bsum">'+sumTxt(s)+'</div>'+
+      '<p class="cl-hint" style="margin:.1rem 0 .5rem">Añade las categorías que quieras (＋) y ponles el nombre que uses (exámenes, trabajos, libreta, actitud…). El % de cada una lo pones <b>tú</b> (0 en lo que no valores). <b>Tienen que sumar exactamente 100 y no pueden pasarse.</b> Cada nota de la evaluación = media de cada categoría × su %.</p>'+
+      '<div class="bsum '+sumCls(s)+'" id="bsum">'+sumTxt(s)+'</div>'+
       '<div id="brows">'+rows+'</div>'+
       '<button class="btn ghost block" id="badd">＋ Añadir categoría</button>'+
       '<div class="form-actions"><button class="btn ghost" id="bcan">Cancelar</button><button class="btn primary" id="bok">Guardar</button></div>'; };
-  const updSum=()=>{ const e=$('#bsum',$('#sheetBody')); if(!e)return; const s=sumaDe(); e.textContent=sumTxt(s); e.className='bsum '+(s===100?'ok':'warn'); };
+  const updSum=()=>{ const e=$('#bsum',$('#sheetBody')); if(!e)return; const s=sumaDe(); e.textContent=sumTxt(s); e.className='bsum '+sumCls(s); };
   const wire=()=>{ const b=$('#sheetBody');
     b.querySelectorAll('.brow').forEach(row=>{ const i=+row.dataset.i;
       row.querySelector('.bnombre').oninput=e=>{ bars[i].nombre=e.target.value; };
@@ -590,7 +591,8 @@ function baremoForm(g,as){
     $('#bok',b).onclick=()=>{ const clean=bars.filter(x=>String(x.nombre).trim()!=='').map(x=>({id:x.id||nid('b'),nombre:String(x.nombre).trim(),peso:Math.max(0,Number(x.peso)||0)}));
       if(!clean.length){ alert('Deja al menos una categoría (por ejemplo «Exámenes»).'); return; }
       const s=clean.reduce((a,x)=>a+x.peso,0);
-      if(s!==100 && !confirm('Los % suman '+s+'%, no 100. Lo normal es que sumen 100.\n\n¿Guardar así igualmente? (la nota se calculará a proporción de lo que hayas puesto).')) return;
+      if(s>100){ alert('Los % no pueden pasar de 100.\nAhora suman '+s+'% — quita '+(s-100)+'.'); return; }
+      if(s<100){ alert('Los % tienen que sumar 100.\nAhora suman '+s+'% — te faltan '+(100-s)+'.'); return; }
       CL.baremos=CL.baremos||{}; CL.baremos[g]=CL.baremos[g]||{}; CL.baremos[g][as]=clean; saveCL(); closeSheet(); render(); }; };
   openBottom(draw(),false); wire();
 }
