@@ -268,6 +268,7 @@ const saveCL = () => { try{ localStorage.setItem('clase_data', JSON.stringify(CL
 st.claseView = 'alumnos';   // alumnos | deberes | salidas
 st.alumno = null;           // id del alumno abierto (pantalla de detalle)
 st.docsUnlocked = false;    // PIN de documentos desbloqueado en esta sesión
+st.evalTab = '1';           // pestaña de evaluación activa en el cuaderno (1|2|3|final)
 function clGrupo(){ if(!CL.grupos.length) return null; if(!CL.grupos.includes(st.grupo)) st.grupo = CL.grupos[0]; return st.grupo; }
 const alumnosDe = g => (CL.alumnos[g] = CL.alumnos[g] || []);
 const asigDe    = g => (CL.asig[g]    = CL.asig[g]    || []);
@@ -278,6 +279,20 @@ const nid = p => p+Date.now().toString(36)+Math.floor(Math.random()*1e4).toStrin
 function nnum(v){ v=String(v==null?'':v).trim().replace(',','.'); if(v==='')return null; const n=parseFloat(v); return isFinite(n)?n:null; }
 function mediaNotas(o){ const xs=['ex','t1','t2','gen'].map(k=>nnum(o&&o[k])).filter(n=>n!=null); if(!xs.length)return null; return Math.round(xs.reduce((a,b)=>a+b,0)/xs.length*100)/100; }
 function fmtNota(n){ return n==null?'—':String(n).replace('.',','); }
+// ---- cuaderno de notas v2: evaluaciones + baremos ponderados ----
+const BAREMOS_DEF = [ {nombre:'Exámenes',peso:70}, {nombre:'Trabajos',peso:20}, {nombre:'Comportamiento',peso:10} ];
+function baremosDe(g,as){ CL.baremos=CL.baremos||{}; CL.baremos[g]=CL.baremos[g]||{}; if(!CL.baremos[g][as])CL.baremos[g][as]=BAREMOS_DEF.map(b=>({id:nid('b'),nombre:b.nombre,peso:b.peso})); return CL.baremos[g][as]; }
+function notaAsig(al,g,as){ al.notas=al.notas||{}; let na=al.notas[as];
+  if(na && !na.ev){ // migración del modelo viejo {ex,t1,t2,gen} sin perder números
+    const viejo=['ex','t1','t2','gen'].map(k=>na[k]).filter(v=>v!=null && String(v).trim()!==''); na={ev:{}}; al.notas[as]=na;
+    if(viejo.length){ const bid=baremosDe(g,as)[0].id; na.ev['1']={}; na.ev['1'][bid]=viejo.map(String); } }
+  if(!na){ na={ev:{}}; al.notas[as]=na; } na.ev=na.ev||{}; return na; }
+function gradesOf(na,ev,bid){ na.ev[ev]=na.ev[ev]||{}; na.ev[ev][bid]=na.ev[ev][bid]||[]; return na.ev[ev][bid]; }
+function mediaLista(arr){ const xs=(arr||[]).map(nnum).filter(n=>n!=null); if(!xs.length)return null; return Math.round(xs.reduce((a,b)=>a+b,0)/xs.length*100)/100; }
+function notaEval(al,g,as,ev){ const bars=baremosDe(g,as), na=notaAsig(al,g,as); let sw=0,acc=0;
+  bars.forEach(b=>{ const m=mediaLista(gradesOf(na,ev,b.id)); const p=Number(b.peso)||0; if(m!=null&&p>0){ acc+=m*p; sw+=p; } });
+  return sw>0 ? Math.round(acc/sw*100)/100 : null; }
+function notaFinal(al,g,as){ const xs=['1','2','3'].map(ev=>notaEval(al,g,as,ev)).filter(n=>n!=null); if(!xs.length)return null; return Math.round(xs.reduce((a,b)=>a+b,0)/xs.length*100)/100; }
 function cumpleDias(iso){ if(!iso)return null; const p=String(iso).split('-').map(Number); const m=p[1],d=p[2]; if(!m||!d)return null; const n=new Date(); const t0=new Date(n.getFullYear(),n.getMonth(),n.getDate()); let nx=new Date(t0.getFullYear(),m-1,d); if(nx<t0)nx=new Date(t0.getFullYear()+1,m-1,d); return Math.round((nx-t0)/86400000); }
 function cumpleTxt(iso){ if(!iso)return ''; const p=String(iso).split('-').map(Number); const dt=new Date(2000,(p[1]||1)-1,p[2]||1); const s=dt.toLocaleDateString('es-ES',{day:'numeric',month:'short'}).replace('.',''); const dd=cumpleDias(iso); return '🎂 '+s+(dd!=null&&dd<=14?(dd===0?' · ¡hoy!':' · en '+dd+' d'):''); }
 function fechaCortaISO(iso){ if(!iso)return ''; const p=String(iso).split('-').map(Number); const dt=new Date(p[0],(p[1]||1)-1,p[2]||1); return dt.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'}); }
@@ -391,6 +406,7 @@ function renderAlumnos(app,g){
     c.onclick=()=>{ st.alumno=al.id; render(); };
     wrap.appendChild(c);
   });
+  if(asigDe(g).length){ const imp=el('button','imp-notas','⬆ Importar notas desde Excel'); imp.onclick=()=>importNotasForm(g); app.appendChild(imp); }
   app.appendChild(el('footer','foot','<div><b>Toca 👍 o 👎</b> para sumar un positivo o un negativo al instante. Toca al alumno para ver sus notas, faltas y tutoría.</div>'));
 }
 function bump(node){ node.classList.remove('bumped'); void node.offsetWidth; node.classList.add('bumped'); }
@@ -434,29 +450,8 @@ function renderAlumnoDetail(app,g,al){
   selS.onchange=()=>{ al.sitFam=selS.value; saveCL(); noteW.classList.toggle('hide', selS.value!=='particular'); };
   wrap.appendChild(dc);
 
-  // Cuaderno de notas
-  wrap.appendChild(el('div','sp-sec','Cuaderno de notas'));
-  const asigs=asigDe(g);
-  if(!asigs.length){ wrap.appendChild(el('div','cl-hint','Añade una asignatura para empezar a poner notas (examen, 1.º y 2.º trimestre y general).')); }
-  al.notas=al.notas||{};
-  asigs.forEach(as=>{
-    const o=(al.notas[as]=al.notas[as]||{ex:'',t1:'',t2:'',gen:''});
-    const nc=el('div','cl-note');
-    nc.innerHTML='<div class="cl-note-h"><b>'+escapeHtml(as)+'</b><span class="cl-media">media <em>'+fmtNota(mediaNotas(o))+'</em></span></div>';
-    const row=el('div','cl-grades');
-    [['ex','Examen'],['t1','1.º trim'],['t2','2.º trim'],['gen','General']].forEach(([k,lbl])=>{
-      const f=el('label','cl-grade','<span>'+lbl+'</span>');
-      const inp=el('input'); inp.type='text'; inp.inputMode='decimal'; inp.value=o[k]||''; inp.placeholder='–';
-      inp.oninput=()=>{ o[k]=inp.value; saveCL(); nc.querySelector('.cl-media em').textContent=fmtNota(mediaNotas(o)); };
-      f.appendChild(inp); row.appendChild(f);
-    });
-    nc.appendChild(row);
-    const del=el('button','cl-note-del','Quitar asignatura'); del.onclick=()=>{ const i=asigs.indexOf(as); if(i>=0)asigs.splice(i,1); alumnosDe(g).forEach(a=>{ if(a.notas)delete a.notas[as]; }); saveCL(); render(); };
-    nc.appendChild(del);
-    wrap.appendChild(nc);
-  });
-  if(asigs.length) wrap.appendChild(el('div','cl-subhint','Escribe la nota a mano: vale un número entero o con decimales (8 · 8,5 · 7,25). Lo que no sea un número (p. ej. «NP») se guarda, pero no cuenta para la media.'));
-  const addAs=el('button','btn ghost block','＋ Añadir asignatura'); addAs.onclick=()=>asigForm(g); wrap.appendChild(addAs);
+  // Cuaderno de notas (v2: evaluaciones + baremos ponderados)
+  renderCuaderno(wrap,al,g);
 
   // Tutoría
   wrap.appendChild(el('div','sp-sec','Tutoría con la familia'));
@@ -519,6 +514,125 @@ function renderAlumnoDetail(app,g,al){
   const edit=el('button','btn ghost','Editar datos'); edit.onclick=()=>alForm(g,al);
   const del=el('button','btn danger','Borrar alumno'); del.onclick=()=>{ if(confirm('¿Borrar a '+al.nombre+' y todos sus datos?')){ CL.alumnos[g]=alumnosDe(g).filter(a=>a.id!==al.id); saveCL(); st.alumno=null; render(); } };
   acts.appendChild(edit); acts.appendChild(del); wrap.appendChild(acts);
+}
+function renderCuaderno(wrap,al,g){
+  wrap.appendChild(el('div','sp-sec','Cuaderno de notas'));
+  const asigs=asigDe(g);
+  if(!asigs.length){ wrap.appendChild(el('div','cl-hint','Añade una asignatura para puntuar por evaluaciones y baremos (exámenes, trabajos, comportamiento…).')); }
+  else{
+    if(!st.evalTab) st.evalTab='1';
+    const seg=el('div','seg evseg');
+    [['1','1ª'],['2','2ª'],['3','3ª'],['final','Final']].forEach(([v,lbl])=>{ const b=el('button'); b.textContent=lbl; b.dataset.v=v; b.setAttribute('aria-selected', v===st.evalTab); b.onclick=()=>{ st.evalTab=v; render(); }; seg.appendChild(b); });
+    wrap.appendChild(seg);
+    asigs.forEach(as=>{ const card=el('div','cl-note'); if(st.evalTab==='final') fillFinalCard(card,al,g,as); else fillEvalCard(card,al,g,as,st.evalTab); wrap.appendChild(card); });
+    wrap.appendChild(el('div','cl-subhint', st.evalTab==='final'
+      ? 'La nota final es la media de las tres evaluaciones (solo cuenta las que ya tienen nota).'
+      : 'Pon varias notas por categoría (5, 6, 9…) y se hace la media sola. La nota de la evaluación pondera cada baremo por su %.'));
+  }
+  const addAs=el('button','btn ghost block','＋ Añadir asignatura'); addAs.onclick=()=>asigForm(g); wrap.appendChild(addAs);
+}
+function fillEvalCard(card,al,g,as,ev){
+  const bars=baremosDe(g,as), na=notaAsig(al,g,as);
+  const evNum={'1':'1ª','2':'2ª','3':'3ª'}[ev]||ev;
+  const head=el('div','cl-note-h','<b>'+escapeHtml(as)+'</b><span class="cl-media">'+evNum+' eval. <em>'+fmtNota(notaEval(al,g,as,ev))+'</em></span>');
+  card.appendChild(head);
+  const updEval=()=>{ head.querySelector('.cl-media em').textContent=fmtNota(notaEval(al,g,as,ev)); };
+  bars.forEach(b=>{
+    const grades=gradesOf(na,ev,b.id);
+    const bx=el('div','bar');
+    const bh=el('div','bar-h','<span class="bar-n">'+escapeHtml(b.nombre)+'</span><span class="bar-p">'+(Number(b.peso)||0)+'%</span><span class="bar-m"></span>');
+    bx.appendChild(bh);
+    const upd=()=>{ bh.querySelector('.bar-m').textContent='media '+fmtNota(mediaLista(grades)); };
+    const chips=el('div','bar-notes');
+    const addWrap=el('span','noteadd');
+    const inp=el('input'); inp.type='text'; inp.inputMode='decimal'; inp.placeholder='＋ nota'; inp.setAttribute('aria-label','Añadir nota a '+b.nombre);
+    const redraw=()=>{ [...chips.querySelectorAll('.notechip')].forEach(n=>n.remove()); grades.forEach((val,idx)=>{ const t=el('span','notechip', escapeHtml(String(val))+' ✕'); t.onclick=()=>{ grades.splice(idx,1); saveCL(); redraw(); upd(); updEval(); }; chips.insertBefore(t,addWrap); }); };
+    const commit=()=>{ const v=inp.value.trim(); if(v==='')return; grades.push(v); saveCL(); redraw(); upd(); updEval(); inp.value=''; inp.focus(); };
+    inp.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); commit(); } };
+    inp.onblur=commit;
+    addWrap.appendChild(inp); chips.appendChild(addWrap);
+    redraw(); upd(); bx.appendChild(chips); card.appendChild(bx);
+  });
+  const acts=el('div','cl-note-acts');
+  const eb=el('button','cl-note-del','⚙ Editar baremos'); eb.onclick=()=>baremoForm(g,as); acts.appendChild(eb);
+  const del=el('button','cl-note-del','Quitar asignatura'); del.onclick=()=>{ if(!confirm('¿Quitar «'+as+'» y todas sus notas?'))return; const i=asigDe(g).indexOf(as); if(i>=0)asigDe(g).splice(i,1); alumnosDe(g).forEach(a=>{ if(a.notas)delete a.notas[as]; }); if(CL.baremos&&CL.baremos[g])delete CL.baremos[g][as]; saveCL(); render(); };
+  acts.appendChild(del); card.appendChild(acts);
+}
+function fillFinalCard(card,al,g,as){
+  const e1=notaEval(al,g,as,'1'),e2=notaEval(al,g,as,'2'),e3=notaEval(al,g,as,'3'),fin=notaFinal(al,g,as);
+  card.appendChild(el('div','cl-note-h','<b>'+escapeHtml(as)+'</b><span class="cl-media">final <em>'+fmtNota(fin)+'</em></span>'));
+  const rows=el('div','fin-rows');
+  [['1ª evaluación',e1],['2ª evaluación',e2],['3ª evaluación',e3]].forEach(([lbl,v])=>{ rows.appendChild(el('div','fin-row','<span>'+lbl+'</span>'+(v==null?'<b class="fin-pend">pendiente</b>':'<b>'+fmtNota(v)+'</b>'))); });
+  rows.appendChild(el('div','fin-row total','<span>Nota final del curso</span><b>'+fmtNota(fin)+'</b>'));
+  card.appendChild(rows);
+}
+function baremoForm(g,as){
+  const bars=baremosDe(g,as).map(b=>({id:b.id,nombre:b.nombre,peso:b.peso}));
+  const draw=()=>{ const rows=bars.map((b,i)=>'<div class="brow" data-i="'+i+'"><input class="bnombre" value="'+escapeHtml(String(b.nombre))+'" placeholder="Categoría" autocomplete="off"><input class="bpeso" inputmode="numeric" value="'+escapeHtml(String(b.peso))+'"><span class="bpct">%</span><button class="bdel" aria-label="Quitar categoría">✕</button></div>').join('');
+    const suma=bars.reduce((a,b)=>a+(Number(b.peso)||0),0);
+    return '<div class="form-h">Baremos · '+escapeHtml(as)+'</div>'+
+      '<p class="cl-hint" style="margin:.1rem 0 .6rem">Categorías y el % que pesa cada una. Si no suman 100, se ajusta solo. Suma actual: <b>'+suma+'%</b></p>'+
+      '<div id="brows">'+rows+'</div>'+
+      '<button class="btn ghost block" id="badd">＋ Añadir categoría</button>'+
+      '<div class="form-actions"><button class="btn ghost" id="bcan">Cancelar</button><button class="btn primary" id="bok">Guardar</button></div>'; };
+  const wire=()=>{ const b=$('#sheetBody');
+    b.querySelectorAll('.brow').forEach(row=>{ const i=+row.dataset.i;
+      row.querySelector('.bnombre').oninput=e=>{ bars[i].nombre=e.target.value; };
+      row.querySelector('.bpeso').oninput=e=>{ bars[i].peso=e.target.value; };
+      row.querySelector('.bdel').onclick=()=>{ bars.splice(i,1); openBottom(draw(),false); wire(); }; });
+    $('#badd',b).onclick=()=>{ bars.push({id:nid('b'),nombre:'',peso:0}); openBottom(draw(),false); wire(); const rr=$('#brows',b); if(rr){ const last=rr.querySelector('.brow:last-child .bnombre'); if(last)last.focus(); } };
+    $('#bcan',b).onclick=closeSheet;
+    $('#bok',b).onclick=()=>{ const clean=bars.filter(x=>String(x.nombre).trim()!=='').map(x=>({id:x.id||nid('b'),nombre:String(x.nombre).trim(),peso:Math.max(0,Number(x.peso)||0)}));
+      if(!clean.length){ alert('Deja al menos una categoría (por ejemplo «Exámenes»).'); return; }
+      CL.baremos=CL.baremos||{}; CL.baremos[g]=CL.baremos[g]||{}; CL.baremos[g][as]=clean; saveCL(); closeSheet(); render(); }; };
+  openBottom(draw(),false); wire();
+}
+// ---- importar notas desde Excel (todos los alumnos de golpe) ----
+function normNom(s){ return String(s==null?'':s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' '); }
+function tokKey(s){ return normNom(s).split(' ').filter(Boolean).sort().join(' '); }
+function analizarImport(g,rows){
+  const als=alumnosDe(g), byExact={}, byTok={};
+  als.forEach(a=>{ byExact[normNom(a.nombre)]=a; const tk=tokKey(a.nombre); if(tk)byTok[tk]=a; });
+  const matched=[], unmatched=[]; let ignored=0;
+  (rows||[]).forEach(r=>{ if(!r||!r.length)return; const nom=r[0]; const notas=r.slice(1).map(nnum).filter(n=>n!=null);
+    const al=byExact[normNom(nom)]||byTok[tokKey(nom)]||null;
+    if(al){ if(notas.length)matched.push({al,notas}); else ignored++; }
+    else if(notas.length && String(nom==null?'':nom).trim()!=='') unmatched.push(String(nom).trim());
+    else ignored++; });
+  return {matched, unmatched, ignored};
+}
+function importPreviewHtml(p){
+  if(!p.matched.length && !p.unmatched.length) return '<div class="im-err">No se han encontrado notas. Revisa que la 1ª columna sean nombres y las siguientes, notas.</div>';
+  const nN=p.matched.reduce((a,m)=>a+m.notas.length,0); let h='';
+  if(p.matched.length) h+='<div class="im-ok">✓ '+p.matched.length+' alumno'+(p.matched.length>1?'s':'')+' · '+nN+' nota'+(nN>1?'s':'')+' a importar</div>';
+  if(p.unmatched.length) h+='<div class="im-warn">⚠️ Sin coincidencia ('+p.unmatched.length+'): '+p.unmatched.map(escapeHtml).join(', ')+'</div>';
+  return h;
+}
+function importNotasForm(g){
+  const asigs=asigDe(g);
+  if(!asigs.length){ alert('Primero añade alguna asignatura para poder importar sus notas.'); return; }
+  if(!alumnosDe(g).length){ alert('Primero añade a los alumnos: las notas se emparejan por su nombre.'); return; }
+  const barOptions=as=>baremosDe(g,as).map(b=>'<option value="'+b.id+'">'+escapeHtml(b.nombre)+'</option>').join('');
+  openBottom('<div class="form-h">Importar notas desde Excel</div>'+
+    '<p class="cl-hint" style="margin:.1rem 0 .6rem"><b>Columna A:</b> nombre del alumno. <b>Siguientes columnas:</b> las notas (una por examen/trabajo). Se añaden a la categoría elegida, buscando a cada alumno por su nombre.</p>'+
+    '<label class="fl">Asignatura<select id="im_as">'+asigs.map(a=>'<option value="'+escapeHtml(a)+'">'+escapeHtml(a)+'</option>').join('')+'</select></label>'+
+    '<label class="fl">Evaluación<select id="im_ev"><option value="1">1ª evaluación</option><option value="2">2ª evaluación</option><option value="3">3ª evaluación</option></select></label>'+
+    '<label class="fl">Categoría (baremo)<select id="im_bar">'+barOptions(asigs[0])+'</select></label>'+
+    '<label class="fl">Archivo Excel<input id="im_file" type="file" accept=".xlsx,.xls,.csv"></label>'+
+    '<div class="im-prev" id="im_prev"></div>'+
+    '<div class="form-actions"><button class="btn ghost" id="im_c">Cancelar</button><button class="btn primary" id="im_ok" disabled>Importar</button></div>', false);
+  const b=$('#sheetBody'); const asSel=$('#im_as',b), barSel=$('#im_bar',b), prev=$('#im_prev',b), okBtn=$('#im_ok',b); let parsed=null;
+  asSel.onchange=()=>{ barSel.innerHTML=barOptions(asSel.value); };
+  $('#im_c',b).onclick=closeSheet;
+  $('#im_file',b).onchange=async e=>{ const f=e.target.files&&e.target.files[0]; if(!f)return;
+    prev.innerHTML='<div class="im-info">Leyendo…</div>'; okBtn.disabled=true;
+    try{ const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false});
+      parsed=analizarImport(g,rows); prev.innerHTML=importPreviewHtml(parsed); okBtn.disabled=parsed.matched.length===0;
+    }catch(err){ parsed=null; prev.innerHTML='<div class="im-err">No se pudo leer el archivo. Guárdalo como Excel (.xlsx) e inténtalo otra vez.</div>'; okBtn.disabled=true; } };
+  okBtn.onclick=()=>{ if(!parsed||!parsed.matched.length)return; const ev=$('#im_ev',b).value, bid=barSel.value, as=asSel.value;
+    let nN=0; parsed.matched.forEach(m=>{ const na=notaAsig(m.al,g,as); const arr=gradesOf(na,ev,bid); m.notas.forEach(v=>{ arr.push(String(v).replace('.',',')); nN++; }); });
+    if(saveCLsafe()){ closeSheet(); render(); alert('✓ Importadas '+nN+' nota(s) a '+parsed.matched.length+' alumno(s).'+(parsed.unmatched.length?'\n\n⚠️ No se encontraron: '+parsed.unmatched.join(', '):'')); } };
 }
 function statTile(cls,emoji,label,val,inc,dec){
   const t=el('div','cl-stat '+cls,'<div class="cl-stat-top">'+emoji+' '+label+'</div>');
