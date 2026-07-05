@@ -527,7 +527,7 @@ function renderCuaderno(wrap,al,g){
     asigs.forEach(as=>{ const card=el('div','cl-note'); if(st.evalTab==='final') fillFinalCard(card,al,g,as); else fillEvalCard(card,al,g,as,st.evalTab); wrap.appendChild(card); });
     wrap.appendChild(el('div','cl-subhint', st.evalTab==='final'
       ? 'La nota final es la media de las tres evaluaciones (solo cuenta las que ya tienen nota).'
-      : 'Pon varias notas por categoría (5, 6, 9…) y se hace la media sola. La nota de la evaluación pondera cada baremo por su %.'));
+      : 'Los % son TUYOS: toca un «%» o el botón ⚙ para cambiarlos, poner 0 en lo que no valores, o dejar solo exámenes. Pon varias notas por categoría (5, 6, 9…) y la media sale sola.'));
   }
   const addAs=el('button','btn ghost block','＋ Añadir asignatura'); addAs.onclick=()=>asigForm(g); wrap.appendChild(addAs);
 }
@@ -540,8 +540,9 @@ function fillEvalCard(card,al,g,as,ev){
   bars.forEach(b=>{
     const grades=gradesOf(na,ev,b.id);
     const bx=el('div','bar');
-    const bh=el('div','bar-h','<span class="bar-n">'+escapeHtml(b.nombre)+'</span><span class="bar-p">'+(Number(b.peso)||0)+'%</span><span class="bar-m"></span>');
+    const bh=el('div','bar-h','<span class="bar-n">'+escapeHtml(b.nombre)+'</span><button class="bar-p" title="Cambiar el %">'+(Number(b.peso)||0)+'%</button><span class="bar-m"></span>');
     bx.appendChild(bh);
+    bh.querySelector('.bar-p').onclick=()=>baremoForm(g,as);
     const upd=()=>{ bh.querySelector('.bar-m').textContent='media '+fmtNota(mediaLista(grades)); };
     const chips=el('div','bar-notes');
     const addWrap=el('span','noteadd');
@@ -553,8 +554,8 @@ function fillEvalCard(card,al,g,as,ev){
     addWrap.appendChild(inp); chips.appendChild(addWrap);
     redraw(); upd(); bx.appendChild(chips); card.appendChild(bx);
   });
+  const eb=el('button','btn ghost block bar-edit','⚙ Poner mis % (baremos)'); eb.onclick=()=>baremoForm(g,as); card.appendChild(eb);
   const acts=el('div','cl-note-acts');
-  const eb=el('button','cl-note-del','⚙ Editar baremos'); eb.onclick=()=>baremoForm(g,as); acts.appendChild(eb);
   const del=el('button','cl-note-del','Quitar asignatura'); del.onclick=()=>{ if(!confirm('¿Quitar «'+as+'» y todas sus notas?'))return; const i=asigDe(g).indexOf(as); if(i>=0)asigDe(g).splice(i,1); alumnosDe(g).forEach(a=>{ if(a.notas)delete a.notas[as]; }); if(CL.baremos&&CL.baremos[g])delete CL.baremos[g][as]; saveCL(); render(); };
   acts.appendChild(del); card.appendChild(acts);
 }
@@ -568,22 +569,28 @@ function fillFinalCard(card,al,g,as){
 }
 function baremoForm(g,as){
   const bars=baremosDe(g,as).map(b=>({id:b.id,nombre:b.nombre,peso:b.peso}));
+  const sumaDe=()=>bars.reduce((a,b)=>a+(Number(b.peso)||0),0);
+  const sumTxt=s=> s===100 ? '✓ Suman 100%' : (s<100 ? ('Suman '+s+'% · faltan '+(100-s)+' para 100') : ('Suman '+s+'% · te pasas '+(s-100)+' de 100'));
   const draw=()=>{ const rows=bars.map((b,i)=>'<div class="brow" data-i="'+i+'"><input class="bnombre" value="'+escapeHtml(String(b.nombre))+'" placeholder="Categoría" autocomplete="off"><input class="bpeso" inputmode="numeric" value="'+escapeHtml(String(b.peso))+'"><span class="bpct">%</span><button class="bdel" aria-label="Quitar categoría">✕</button></div>').join('');
-    const suma=bars.reduce((a,b)=>a+(Number(b.peso)||0),0);
+    const s=sumaDe();
     return '<div class="form-h">Baremos · '+escapeHtml(as)+'</div>'+
-      '<p class="cl-hint" style="margin:.1rem 0 .6rem">Categorías y el % que pesa cada una. Si no suman 100, se ajusta solo. Suma actual: <b>'+suma+'%</b></p>'+
+      '<p class="cl-hint" style="margin:.1rem 0 .5rem">El % de cada categoría lo pones <b>tú</b> (pon <b>0</b> en lo que no valores, o deja solo Exámenes). <b>Deben sumar 100.</b> Cada nota de la evaluación = media de cada categoría × su %.</p>'+
+      '<div class="bsum '+(s===100?'ok':'warn')+'" id="bsum">'+sumTxt(s)+'</div>'+
       '<div id="brows">'+rows+'</div>'+
       '<button class="btn ghost block" id="badd">＋ Añadir categoría</button>'+
       '<div class="form-actions"><button class="btn ghost" id="bcan">Cancelar</button><button class="btn primary" id="bok">Guardar</button></div>'; };
+  const updSum=()=>{ const e=$('#bsum',$('#sheetBody')); if(!e)return; const s=sumaDe(); e.textContent=sumTxt(s); e.className='bsum '+(s===100?'ok':'warn'); };
   const wire=()=>{ const b=$('#sheetBody');
     b.querySelectorAll('.brow').forEach(row=>{ const i=+row.dataset.i;
       row.querySelector('.bnombre').oninput=e=>{ bars[i].nombre=e.target.value; };
-      row.querySelector('.bpeso').oninput=e=>{ bars[i].peso=e.target.value; };
+      row.querySelector('.bpeso').oninput=e=>{ bars[i].peso=e.target.value; updSum(); };
       row.querySelector('.bdel').onclick=()=>{ bars.splice(i,1); openBottom(draw(),false); wire(); }; });
     $('#badd',b).onclick=()=>{ bars.push({id:nid('b'),nombre:'',peso:0}); openBottom(draw(),false); wire(); const rr=$('#brows',b); if(rr){ const last=rr.querySelector('.brow:last-child .bnombre'); if(last)last.focus(); } };
     $('#bcan',b).onclick=closeSheet;
     $('#bok',b).onclick=()=>{ const clean=bars.filter(x=>String(x.nombre).trim()!=='').map(x=>({id:x.id||nid('b'),nombre:String(x.nombre).trim(),peso:Math.max(0,Number(x.peso)||0)}));
       if(!clean.length){ alert('Deja al menos una categoría (por ejemplo «Exámenes»).'); return; }
+      const s=clean.reduce((a,x)=>a+x.peso,0);
+      if(s!==100 && !confirm('Los % suman '+s+'%, no 100. Lo normal es que sumen 100.\n\n¿Guardar así igualmente? (la nota se calculará a proporción de lo que hayas puesto).')) return;
       CL.baremos=CL.baremos||{}; CL.baremos[g]=CL.baremos[g]||{}; CL.baremos[g][as]=clean; saveCL(); closeSheet(); render(); }; };
   openBottom(draw(),false); wire();
 }
