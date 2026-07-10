@@ -5,7 +5,7 @@
   --ink:#3D3733; --ink2:#8A7F78; --paper:#FBF7F1; --surface:#ffffff; --line:#EFE7DC; --field:#fdfbf8; --panel:#efe8dd;
   --coral:#EE8F86; --coral-bg:#FBE5E1; --brand:#D46356; --brand-ink:#B84A3E; --brand-soft:#FBE5E1;
   --mint:#5FBEAA; --mint-bg:#DCF1EC; --honey:#E7AC43; --honey-ink:#9A7420; --honey-bg:#FBEECB;
-  --lilac:#A794DE; --lilac-bg:#ECE6F8; --sky:#7EB4DF; --sky-bg:#E3EFF8;
+  --lilac:#A794DE; --lilac-bg:#ECE6F8; --sky:#7EB4DF; --sky-bg:#E3EFF8; --sky-ink:#2f5686;
   --ok:#1E7A5F; --err:#C0504A; --sun-bg:#FBEECB;
   --radius:18px; --shadow:0 2px 4px rgba(61,55,51,.04),0 12px 28px rgba(61,55,51,.06);
   --nav-h:66px; --font:'Nunito',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -15,7 +15,7 @@ html[data-theme="dark"]{
   --ink:#F2ECE4; --ink2:#ADA298; --paper:#191715; --surface:#262320; --line:#3a352f; --field:#211d1a; --panel:#332e28;
   --brand-ink:#F1A99E; --brand-soft:#3d2a24;
   --coral-bg:#3d2a24; --mint-bg:#213331; --honey-bg:#342a1a; --honey-ink:#E7C583;
-  --lilac-bg:#2a2540; --sky-bg:#1f2a37; --sun-bg:#342a1a;
+  --lilac-bg:#2a2540; --sky-bg:#1f2a37; --sky-ink:#bcd4ec; --sun-bg:#342a1a;
   --ok:#5EC7A4; --err:#EC8A83;
   --shadow:0 2px 4px rgba(0,0,0,.25),0 12px 26px rgba(0,0,0,.4);
 }
@@ -442,3 +442,38 @@ button.bar-p::after{content:" ✎";font-size:9px;opacity:.7}
 .fade{animation:fade .32s ease both}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ===== Ajustes de la revisión (v15) ===== */
+.sp-note{margin:10px 18px 2px;background:var(--honey-bg);border:1px solid #f0dfb6;border-radius:14px;padding:11px 13px;font-size:12.5px;font-weight:800;color:var(--honey-ink);line-height:1.4}
+.yr-btn{cursor:pointer;font-family:var(--font)}
+.yr-btn:active{transform:scale(.96)}
+.noteadd input.bad{border-color:var(--err);color:var(--err)}
+.cell.free .qq{opacity:.5;color:var(--ink2)}
+.cell.free.has-q{cursor:default}
+/* objetivos táctiles más cómodos */
+.wkn-hoy{padding:6px 12px;min-height:30px}
+.ib-x{padding:8px 10px;font-size:16px}
+.cl-step{width:38px;height:38px;font-size:20px}
+button.bar-p{padding:5px 11px}
+.doc-x{width:38px;height:38px}
+.cl-ftag{padding:6px 11px}
+/* contraste en modo oscuro para las piezas nuevas */
+html[data-theme="dark"] .bsum.ok,html[data-theme="dark"] .im-ok{background:#1d3329;border-color:#2f5b4e;color:#7ddcb4}
+html[data-theme="dark"] .bsum.warn,html[data-theme="dark"] .im-warn{background:#342a1a;border-color:#5c4a2a;color:#e7c583}
+html[data-theme="dark"] .bsum.bad,html[data-theme="dark"] .im-err{background:#3a221f;border-color:#5c3a33;color:#f0a29b}
+html[data-theme="dark"] .sp-banner,html[data-theme="dark"] .yr,html[data-theme="dark"] .chk{border-color:#5c3a33}
+html[data-theme="dark"] .sp-note{border-color:#5c4a2a}
+html[data-theme="dark"] .al-alert{background:linear-gradient(#2a1e1b,#3a221f);border-color:#5c3a33;border-left-color:#e0574a}
+html[data-theme="dark"] .al-alert b{color:#f2a99e}
+html[data-theme="dark"] .al-alert span{color:#f2ece4}
+html[data-theme="dark"] .cl-ftag,html[data-theme="dark"] .cl-badge,html[data-theme="dark"] .notechip{background:var(--field)}
+html[data-theme="dark"] .tl.rec{background:var(--honey-bg)}
+/* impresión: el horario en papel, sin barras ni fondos oscuros */
+@media print{
+  .nav,.install-banner,.scrim,.sheet,.tools,.tbtn,.legend,.ag-new,.cl-add,.imp-notas,.wkn-arrow,.wkn-hoy,.seg,.picker,.cl-back{display:none!important}
+  html[data-theme="dark"]{--ink:#1a1a1a;--ink2:#555;--paper:#fff;--surface:#fff;--line:#ccc;--field:#fff}
+  html,body,.wrap{background:#fff!important;color:#000!important;max-width:none!important;padding:0!important;min-height:0}
+  .cell,.recreo,.tl,.tl .sw,.legsw,.card,.ag-card{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .grid,.card,.al-card,.ag-card{page-break-inside:avoid}
+  .app-hd{padding-top:6px}
+}

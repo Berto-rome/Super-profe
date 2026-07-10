@@ -1,20 +1,20 @@
 'use strict';
-/* Horarios May — PWA. Ve el horario por curso y por profe; carga un Excel para actualizarlo. */
+/* Super Profe — PWA. Ve el horario por curso y por profe; carga un Excel para actualizarlo. */
 
 // ---------- datos ----------
 const DEFAULT = window.HORARIO_DEFAULT;
 function loadData(){
-  try{ const s = localStorage.getItem('horario_data'); if(s) return JSON.parse(s); }catch(e){}
+  try{ const s = localStorage.getItem('horario_data'); if(s){ const d=JSON.parse(s); if(validData(d)) return d; } }catch(e){}
   return DEFAULT;
 }
 let D = loadData();
-const usingCustom = () => !!localStorage.getItem('horario_data');
+const usingCustom = () => { try{ const s=localStorage.getItem('horario_data'); return !!s && validData(JSON.parse(s)); }catch(e){ return false; } };
 
 // ---------- identidad del profe (ajustes) ----------
 const DEF_SETTINGS = { nombre:'May', especialidad:'Especialista de Matemáticas · 3.º y 4.º', profe:'May', vacaciones:'', refA:'2025-09-08', tema:'claro' };
 let SET = (()=>{ try{ return Object.assign({}, DEF_SETTINGS, JSON.parse(localStorage.getItem('settings')||'{}')); }catch(e){ return Object.assign({}, DEF_SETTINGS); } })();
 const saveSet = () => { try{ localStorage.setItem('settings', JSON.stringify(SET)); }catch(e){} };
-function applyTheme(){ try{ document.documentElement.setAttribute('data-theme', SET.tema==='oscuro'?'dark':''); }catch(e){} }
+function applyTheme(){ try{ const dark=SET.tema==='oscuro'; document.documentElement.setAttribute('data-theme', dark?'dark':''); const m=document.querySelector('meta[name="theme-color"]'); if(m)m.content=dark?'#191715':'#FBF7F1'; }catch(e){} }
 applyTheme();
 function meProfe(){ return (SET.profe && D.prof[SET.profe]) ? SET.profe : ((D.profesores && D.profesores[0]) || null); }
 
@@ -62,7 +62,6 @@ function profHours(name){ if(!D.prof[name])return 0; const durs=sesDur(); let mi
 const fmtH = h => (Math.round(h*100)/100).toString().replace('.',',');
 const tutorOf     = a    => (D.tutores && D.tutores[a]) || null;
 const aulaOfTutor = name => Object.keys(D.tutores||{}).find(a => D.tutores[a]===name);
-function classesToday(name){ const t=todayIdx(); if(t<0)return null; const box=D.prof[name]; if(!box)return []; const res=[]; D.sesiones.forEach(s=>{ if(s.recreo)return; const e=box.A[t+'-'+s.id]; if(e)res.push({s,e}); }); return res; }
 function hasQuincenal(mode,sel){
   const box = (mode==='aula'?D.aula:D.prof)[sel]; if(!box) return false;
   const keys = new Set([...Object.keys(box.A), ...Object.keys(box.B)]);
@@ -106,13 +105,13 @@ function buildGrid(mode,sel,wk){
     D.dias.forEach((dn,d)=>{
       const c = cellFor(mode,sel,wk,d,s.id);
       const isT = d===today ? ' is-today' : '';
-      if(!c || c.free){ h+='<td class="cell free'+isT+'"><span class="cs">·</span></td>'; return; }
+      if(!c || c.free){ const fq=!!(c&&c.q); h+='<td class="cell free'+isT+(fq?' has-q':'')+'"><span class="cs">·</span>'+(fq?'<span class="qq">A/B</span>':'')+'</td>'; return; }
       const a = ar(c.ar);
       const cellAula = mode==='aula' ? sel : c.who;
       const marked = marks.has(c.ar+'|'+d+'|'+cellAula);
       h+='<td class="cell'+isT+(marked?' has-mark':'')+'" style="background:'+a.bg+';color:'+a.ink+'" data-d="'+d+'" data-s="'+s.id+'" '+
-         'tabindex="0" role="button" aria-label="'+a.name+', '+c.who+(marked?', con examen o tarea marcada':'')+'">'+
-         '<span class="cs">'+a.short+'</span><span class="cw">'+c.who+'</span>'+
+         'tabindex="0" role="button" aria-label="'+escapeHtml(a.name)+', '+escapeHtml(c.who)+(marked?', con examen o tarea marcada':'')+'">'+
+         '<span class="cs">'+escapeHtml(a.short)+'</span><span class="cw">'+escapeHtml(c.who)+'</span>'+
          (c.q?'<span class="qq">A/B</span>':'')+
          (marked?'<span class="exdot" aria-hidden="true">📝</span>':'')+'</td>';
     });
@@ -144,15 +143,15 @@ function openSheet(mode,sel,wk,d,sid){
         '</div><div><div class="sh-t1">Libre</div><div class="sh-t2">sin clase esta semana</div></div></div>';
       const ax = ar(cc.ar); const who = mode==='aula' ? 'con '+cc.pr : 'en '+cc.au;
       return '<div class="sh-card"><div class="sh-dot" style="background:'+ax.bg+';color:'+ax.ink+'">'+lbl+
-        '</div><div><div class="sh-t1">'+ax.name+'</div><div class="sh-t2">'+who+'</div></div></div>';
+        '</div><div><div class="sh-t1">'+escapeHtml(ax.name)+'</div><div class="sh-t2">'+escapeHtml(who)+'</div></div></div>';
     };
     html += mk('A',c.A)+mk('B',c.B);
   } else {
     let who;
     if(mode==='aula') who = 'con '+c.who+(tutorOf(sel)===c.who?' (tutor/a)':'');
     else              who = 'en '+c.who+(tutorOf(c.who)===sel?' (tu tutoría)':'');
-    html += '<div class="sh-card"><div class="sh-dot" style="background:'+a.bg+';color:'+a.ink+'">'+a.short.slice(0,3)+
-      '</div><div><div class="sh-t1">'+a.name+'</div><div class="sh-t2">'+who+'</div></div></div>';
+    html += '<div class="sh-card"><div class="sh-dot" style="background:'+a.bg+';color:'+a.ink+'">'+escapeHtml(a.short.slice(0,3))+
+      '</div><div><div class="sh-t1">'+escapeHtml(a.name)+'</div><div class="sh-t2">'+escapeHtml(who)+'</div></div></div>';
   }
   const exAula = mode==='aula' ? sel : c.who;
   const mine = AG.filter(it=>it.ref && it.ref.ar===c.ar && it.ref.d===d && it.ref.aula===exAula && keyDate(it)>=startToday()).sort((x,y)=>keyDate(x)-keyDate(y));
@@ -166,11 +165,13 @@ function openSheet(mode,sel,wk,d,sid){
   _b.querySelectorAll('.sh-mark').forEach(m=>{ const it=AG.find(x=>x.id===m.dataset.id); if(!it)return; const open=()=>openForm(it); m.onclick=open; m.onkeydown=e=>{ if(e.key==='Enter'){ open(); } }; });
 }
 function openBottom(html, withClose){
-  $('#sheetBody').innerHTML = html;
+  const sb=$('#sheetBody'); sb.innerHTML = html; st.sheetDirty=false;
+  sb.oninput=()=>{ st.sheetDirty=true; }; sb.onchange=()=>{ st.sheetDirty=true; };
   const cl = $('#sheetClose'); if(cl) cl.style.display = withClose ? '' : 'none';
   $('#scrim').classList.add('on'); $('#sheet').classList.add('on');
 }
-function closeSheet(){ if(_tmrId){clearInterval(_tmrId);_tmrId=null;} $('#scrim').classList.remove('on'); $('#sheet').classList.remove('on'); }
+function closeSheet(){ st.sheetDirty=false; if(_tmrId){clearInterval(_tmrId);_tmrId=null;} $('#scrim').classList.remove('on'); $('#sheet').classList.remove('on'); }
+function tryCloseSheet(){ if(st.sheetDirty && !confirm('¿Cerrar sin guardar? Se perderá lo que has escrito.'))return; closeSheet(); }
 let _tmrId=null;
 
 // ---------- vistas ----------
@@ -195,6 +196,8 @@ function renderInicio(app){
   app.appendChild(head);
   $('#edId',head).onclick = openIdentity;
   app.appendChild(el('div','sp-banner', fraseDelDia()));
+  if(SET.profe && D.prof && !D.prof[SET.profe]) app.appendChild(el('div','sp-note','⚠️ Tu horario cambió y «'+escapeHtml(SET.profe)+'» ya no aparece. Ve a «Más → Editar mi identidad» para elegir tu nombre.'));
+  if(pinLegacy()){ const nb=el('div','sp-note','🔒 Novedad: los documentos de recogida ahora se guardan cifrados de verdad. Toca aquí e introduce tu PIN una vez para activarlo.'); nb.style.cursor='pointer'; nb.setAttribute('role','button'); nb.setAttribute('tabindex','0'); nb.onclick=()=>openPinGate(render); nb.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); nb.onclick(); } }; app.appendChild(nb); }
   app.appendChild(el('div','sp-sec','De un vistazo'));
   const wrap = el('div','sp-wrap'); app.appendChild(wrap);
   wrap.appendChild(cardAhora(me));
@@ -211,15 +214,16 @@ function fraseDelDia(){ const f=['Hoy va a ser un buen día ✨','Vas a hacerlo 
 function chipHoy(){ const d=new Date(); const dl=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][d.getDay()]; const mo=d.toLocaleDateString('es-ES',{month:'short'}).replace('.',''); return '<span class="sp-pill">'+cap(dl)+' '+d.getDate()+' '+mo+' · Sem. '+weekLetter(d)+'</span>'; }
 function daysUntil(f){ if(!f)return null; const [Y,M,Dp]=f.split('-').map(Number); const dt=new Date(Y,M-1,Dp); const n=new Date(); const t0=new Date(n.getFullYear(),n.getMonth(),n.getDate()); return Math.round((dt-t0)/86400000); }
 function vacacChip(){ if(!SET.vacaciones)return ''; const n=daysUntil(SET.vacaciones); if(n==null||n<0)return ''; return '<span class="sp-pill sun">🏖️ '+(n===0?'¡hoy vacaciones!':(n+' días para las vacaciones'))+'</span>'; }
-function mondayFirst(me){ const box=me?D.prof[me]:null; if(!box)return ''; for(const s of D.sesiones){ if(s.recreo)continue; const e=box.A['0-'+s.id]; if(e){ return ar(e.ar).short+' · '+e.au+' · '+s.ini; } } return ''; }
+function mondayFirst(me,wk){ wk=wk||'A'; const box=me?D.prof[me]:null; if(!box)return ''; for(const s of D.sesiones){ if(s.recreo)continue; const e=box[wk]['0-'+s.id]; if(e){ return ar(e.ar).short+' · '+e.au+' · '+s.ini; } } return ''; }
 function cardAhora(me){
   const c=el('div','card now'); const t=todayIdx(); const box=me?D.prof[me]:null;
   let k='Ahora', ttl='', sub='', next='';
-  if(t<0){ k='Fin de semana'; ttl='¡A descansar! ☺'; const mf=mondayFirst(me); sub = mf?('El lunes empiezas con '+mf):'Nos vemos el lunes'; }
+  if(t<0){ k='Fin de semana'; ttl='¡A descansar! ☺'; const mf=mondayFirst(me, weekLetter(addDays(mondayOf(new Date()),7))); sub = mf?('El lunes empiezas con '+mf):'Nos vemos el lunes'; }
   else if(!box){ ttl='Sin horario'; sub='Cárgalo en «Más» → Horario'; }
   else{
+    const wk=weekLetter(new Date());
     const d=new Date(); const nowM=d.getHours()*60+d.getMinutes();
-    const blocks=D.sesiones.map(s=>({s,ini:toMin(s.ini),fin:toMin(s.fin),rec:s.recreo,e:s.recreo?null:box.A[t+'-'+s.id]}));
+    const blocks=D.sesiones.map(s=>({s,ini:toMin(s.ini),fin:toMin(s.fin),rec:s.recreo,e:s.recreo?null:box[wk][t+'-'+s.id]}));
     const cur=blocks.find(b=>nowM>=b.ini&&nowM<b.fin);
     const up=blocks.filter(b=>b.ini>nowM&&(b.rec||b.e));
     if(cur){ if(cur.rec){ ttl='🍎 Recreo'; sub='Hasta las '+cur.s.fin; } else if(cur.e){ ttl=ar(cur.e.ar).name; sub=cur.e.au+' · termina a las '+cur.s.fin; } else { ttl='Rato libre'; sub='Ahora no tienes clase'; } }
@@ -256,18 +260,22 @@ function cardCumple(lista){
 }
 function listaHoy(me){ const wrap=el('div','today-list'); const t=todayIdx(); const day=t>=0?t:0; const box=me?D.prof[me]:null;
   if(!box){ wrap.appendChild(el('div','empty','Carga tu horario en «Más» para ver tus clases.')); return wrap; }
-  const has=D.sesiones.some(s=>!s.recreo&&box.A[day+'-'+s.id]);
+  const wk=weekLetter(t>=0 ? new Date() : addDays(mondayOf(new Date()),7));
+  const has=D.sesiones.some(s=>!s.recreo&&box[wk][day+'-'+s.id]);
   if(!has){ wrap.appendChild(el('div','empty', t>=0?'Hoy no tienes clase 🎉':'Sin clases asignadas.')); return wrap; }
-  D.sesiones.forEach(s=>{ if(s.recreo){ wrap.appendChild(el('div','tl rec','<span class="h">'+s.ini+'</span><span class="n">🍎 Recreo</span>')); return; } const e=box.A[day+'-'+s.id]; if(!e)return; const a=ar(e.ar); wrap.appendChild(el('div','tl','<span class="h">'+s.ini+'</span><span class="sw" style="background:'+a.bg+'"></span><span class="n">'+a.short+' · '+e.au+'</span>')); });
+  D.sesiones.forEach(s=>{ if(s.recreo){ wrap.appendChild(el('div','tl rec','<span class="h">'+s.ini+'</span><span class="n">🍎 Recreo</span>')); return; } const e=box[wk][day+'-'+s.id]; if(!e)return; const a=ar(e.ar); wrap.appendChild(el('div','tl','<span class="h">'+s.ini+'</span><span class="sw" style="background:'+a.bg+'"></span><span class="n">'+escapeHtml(a.short)+' · '+escapeHtml(e.au)+'</span>')); });
   return wrap;
 }
 /* ==================== Módulo "Mi clase" (Fase 3.3) ==================== */
 const DEF_CLASE = { grupos:[], alumnos:{}, asig:{}, deberes:{}, salidas:{} };
 let CL = (()=>{ try{ return Object.assign({}, DEF_CLASE, JSON.parse(localStorage.getItem('clase_data')||'{}')); }catch(e){ return JSON.parse(JSON.stringify(DEF_CLASE)); } })();
-const saveCL = () => { try{ localStorage.setItem('clase_data', JSON.stringify(CL)); }catch(e){} };
+let _saveWarnT=0;
+function saveCL(){ try{ localStorage.setItem('clase_data', clSerialize()); return true; }
+  catch(e){ const now=Date.now(); if(now-_saveWarnT>1500){ _saveWarnT=now; alert('No se ha podido guardar: el almacenamiento del móvil está lleno. Borra alguna foto del DNI para hacer sitio.'); } return false; } }
 st.claseView = 'alumnos';   // alumnos | deberes | salidas
 st.alumno = null;           // id del alumno abierto (pantalla de detalle)
 st.docsUnlocked = false;    // PIN de documentos desbloqueado en esta sesión
+st.cryptoKey = null;        // clave AES-GCM derivada del PIN (solo en memoria, esta sesión)
 st.evalTab = '1';           // pestaña de evaluación activa en el cuaderno (1|2|3|final)
 function clGrupo(){ if(!CL.grupos.length) return null; if(!CL.grupos.includes(st.grupo)) st.grupo = CL.grupos[0]; return st.grupo; }
 const alumnosDe = g => (CL.alumnos[g] = CL.alumnos[g] || []);
@@ -277,7 +285,6 @@ const salidasDe = g => (CL.salidas[g] = CL.salidas[g] || []);
 const findAl = (g,id) => alumnosDe(g).find(a=>a.id===id);
 const nid = p => p+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);
 function nnum(v){ v=String(v==null?'':v).trim().replace(',','.'); if(v==='')return null; const n=parseFloat(v); return isFinite(n)?n:null; }
-function mediaNotas(o){ const xs=['ex','t1','t2','gen'].map(k=>nnum(o&&o[k])).filter(n=>n!=null); if(!xs.length)return null; return Math.round(xs.reduce((a,b)=>a+b,0)/xs.length*100)/100; }
 function fmtNota(n){ return n==null?'—':String(n).replace('.',','); }
 // ---- cuaderno de notas v2: evaluaciones + baremos ponderados ----
 const BAREMOS_DEF = [ {nombre:'Exámenes',peso:70}, {nombre:'Trabajos',peso:20}, {nombre:'Comportamiento',peso:10} ];
@@ -293,7 +300,7 @@ function notaEval(al,g,as,ev){ const bars=baremosDe(g,as), na=notaAsig(al,g,as);
   bars.forEach(b=>{ const m=mediaLista(gradesOf(na,ev,b.id)); const p=Number(b.peso)||0; if(m!=null&&p>0){ acc+=m*p; sw+=p; } });
   return sw>0 ? Math.round(acc/sw*100)/100 : null; }
 function notaFinal(al,g,as){ const xs=['1','2','3'].map(ev=>notaEval(al,g,as,ev)).filter(n=>n!=null); if(!xs.length)return null; return Math.round(xs.reduce((a,b)=>a+b,0)/xs.length*100)/100; }
-function cumpleDias(iso){ if(!iso)return null; const p=String(iso).split('-').map(Number); const m=p[1],d=p[2]; if(!m||!d)return null; const n=new Date(); const t0=new Date(n.getFullYear(),n.getMonth(),n.getDate()); let nx=new Date(t0.getFullYear(),m-1,d); if(nx<t0)nx=new Date(t0.getFullYear()+1,m-1,d); return Math.round((nx-t0)/86400000); }
+function cumpleDias(iso){ if(!iso)return null; const p=String(iso).split('-').map(Number); const m=p[1],d=p[2]; if(!m||!d)return null; const n=new Date(); const t0=new Date(n.getFullYear(),n.getMonth(),n.getDate()); const leap=y=>(y%4===0&&y%100!==0)||y%400===0; const mk=y=>new Date(y,m-1,(m===2&&d===29&&!leap(y))?28:d); let nx=mk(t0.getFullYear()); if(nx<t0)nx=mk(t0.getFullYear()+1); return Math.round((nx-t0)/86400000); }
 function cumpleTxt(iso){ if(!iso)return ''; const p=String(iso).split('-').map(Number); const dt=new Date(2000,(p[1]||1)-1,p[2]||1); const s=dt.toLocaleDateString('es-ES',{day:'numeric',month:'short'}).replace('.',''); const dd=cumpleDias(iso); return '🎂 '+s+(dd!=null&&dd<=14?(dd===0?' · ¡hoy!':' · en '+dd+' d'):''); }
 function fechaCortaISO(iso){ if(!iso)return ''; const p=String(iso).split('-').map(Number); const dt=new Date(p[0],(p[1]||1)-1,p[2]||1); return dt.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'}); }
 function inicial(nombre){ return (String(nombre||'?').trim().charAt(0)||'?').toUpperCase(); }
@@ -322,33 +329,89 @@ function comprimirFoto(file){
     fr.readAsDataURL(file);
   });
 }
-// guardar la clase avisando si el almacenamiento del móvil está lleno (fotos pesadas)
-function saveCLsafe(){ try{ localStorage.setItem('clase_data', JSON.stringify(CL)); return true; }catch(e){ alert('No se ha podido guardar: el almacenamiento del móvil está lleno. Borra alguna foto de DNI para hacer sitio.'); return false; } }
-// ---------- PIN de la zona de documentos (cifrado SHA-256, no en claro) ----------
+// serializa la clase SIN el texto plano de los documentos de recogida cuando hay PIN
+// (a disco solo va la versión cifrada `recEnc`; el texto plano vive solo en memoria)
+function clSerialize(){ const strip=pinV2(); return JSON.stringify(CL, (k,v)=> (strip && k==='recogida') ? undefined : v); }
+const saveCLsafe = saveCL;   // alias: ambos avisan si el móvil está lleno
+
+// ---------- PIN + cifrado REAL de los documentos de recogida ----------
+// Clave AES-GCM derivada del PIN con PBKDF2. Los familiares/DNI/fotos se guardan cifrados
+// (`al.recEnc`); su texto plano (`al.recogida`) solo existe en memoria mientras está desbloqueado.
+const PIN_CHK='superprofe-ok';
 async function sha256(txt){ const b=new TextEncoder().encode(String(txt)); const h=await crypto.subtle.digest('SHA-256',b); return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+const hasCrypto = () => !!(window.crypto && window.crypto.subtle);
+function pinIsSet(){ return !!SET.pinDocs; }
+function pinV2(){ return !!SET.pinDocs && typeof SET.pinDocs==='object' && SET.pinDocs.v===2; }
+function pinLegacy(){ return typeof SET.pinDocs==='string' && SET.pinDocs.length>0; }
+function _b64enc(buf){ const b=new Uint8Array(buf); let s=''; const C=0x8000; for(let i=0;i<b.length;i+=C) s+=String.fromCharCode.apply(null,b.subarray(i,i+C)); return btoa(s); }
+function _b64dec(str){ const bin=atob(str); const b=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) b[i]=bin.charCodeAt(i); return b; }
+async function deriveKey(pin,salt,iter){ const base=await crypto.subtle.importKey('raw', new TextEncoder().encode(String(pin)), 'PBKDF2', false, ['deriveKey']); return crypto.subtle.deriveKey({name:'PBKDF2', salt, iterations:iter, hash:'SHA-256'}, base, {name:'AES-GCM', length:256}, false, ['encrypt','decrypt']); }
+async function aesEncrypt(key,plainStr){ const iv=crypto.getRandomValues(new Uint8Array(12)); const ct=await crypto.subtle.encrypt({name:'AES-GCM', iv}, key, new TextEncoder().encode(plainStr)); return {iv:_b64enc(iv), ct:_b64enc(ct)}; }
+async function aesDecrypt(key,obj){ const pt=await crypto.subtle.decrypt({name:'AES-GCM', iv:_b64dec(obj.iv)}, key, _b64dec(obj.ct)); return new TextDecoder().decode(pt); }
+async function encryptRecogida(al){ if(!pinV2()||!st.cryptoKey)return; al.recEnc=await aesEncrypt(st.cryptoKey, JSON.stringify(al.recogida||[])); }
+async function decryptAllRecogida(){ if(!st.cryptoKey)return; for(const g of (CL.grupos||[])) for(const al of alumnosDe(g)){ if(al.recEnc){ try{ al.recogida=JSON.parse(await aesDecrypt(st.cryptoKey, al.recEnc)); }catch(e){ al.recogida=Array.isArray(al.recogida)?al.recogida:[]; } } else if(!Array.isArray(al.recogida)) al.recogida=[]; } }
+async function setNewPin(pin){
+  if(!hasCrypto()) return false;
+  const salt=crypto.getRandomValues(new Uint8Array(16)); const iter=150000;
+  const key=await deriveKey(pin,salt,iter); const check=await aesEncrypt(key,PIN_CHK);
+  const prevPin=SET.pinDocs, prevKey=st.cryptoKey, wasV2=pinV2();
+  st.cryptoKey=key; SET.pinDocs={v:2, salt:_b64enc(salt), iter, check};
+  for(const g of (CL.grupos||[])) for(const al of alumnosDe(g)){ if(!Array.isArray(al.recogida)) al.recogida=[]; await encryptRecogida(al); }
+  // primero los DATOS cifrados a disco; el flag del PIN solo se persiste si los datos se guardaron
+  if(!saveCLsafe()){
+    SET.pinDocs=prevPin; st.cryptoKey=prevKey;
+    for(const g of (CL.grupos||[])) for(const al of alumnosDe(g)){ if(wasV2 && prevKey){ await encryptRecogida(al); } else { delete al.recEnc; } }
+    return false;
+  }
+  saveSet(); st.docsUnlocked=true; return true;
+}
+async function verifyAndUnlock(pin){
+  if(pinV2()){
+    const p=SET.pinDocs; let key; try{ key=await deriveKey(pin,_b64dec(p.salt),p.iter||150000); const dec=await aesDecrypt(key,p.check); if(dec!==PIN_CHK) return false; }catch(e){ return false; }
+    st.cryptoKey=key; st.docsUnlocked=true; await decryptAllRecogida(); return true;
+  }
+  // legacy: devuelve true (migrado), false (PIN malo) o 'quota' (PIN correcto, no se pudo guardar)
+  if(pinLegacy()){ try{ const h=await sha256(pin); if(h!==SET.pinDocs) return false; return (await setNewPin(pin)) ? true : 'quota'; }catch(e){ return false; } }
+  return false;
+}
+async function removePin(){
+  const prevPin=SET.pinDocs, prevKey=st.cryptoKey;
+  for(const g of (CL.grupos||[])) for(const al of alumnosDe(g)){ if(!Array.isArray(al.recogida)) al.recogida=[]; delete al.recEnc; }
+  SET.pinDocs=''; st.cryptoKey=null;
+  // primero clase_data EN CLARO a disco; el flag solo si se guardó bien
+  if(!saveCLsafe()){
+    SET.pinDocs=prevPin; st.cryptoKey=prevKey;
+    if(prevKey) for(const g of (CL.grupos||[])) for(const al of alumnosDe(g)) await encryptRecogida(al);
+    return false;
+  }
+  saveSet(); st.docsUnlocked=true; return true;
+}
 function openPinGate(onOk){
   openBottom('<div class="form-h">🔒 Zona protegida</div>'+
-    '<p class="cl-hint" style="margin:.1rem 0 .7rem">Introduce el PIN para ver los documentos de recogida.</p>'+
+    '<p class="cl-hint" style="margin:.1rem 0 .7rem">Introduce el PIN para ver los documentos de recogida (se guardan cifrados en tu móvil).</p>'+
     '<label class="fl">PIN<input id="pin_i" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="••••"></label>'+
     '<div class="pin-err" id="pin_err"></div>'+
     '<div class="form-actions"><button class="btn ghost" id="pin_c">Cancelar</button><button class="btn primary" id="pin_ok">Entrar</button></div>', false);
   const b=$('#sheetBody'); const inp=$('#pin_i',b); setTimeout(()=>inp.focus(),60);
   $('#pin_c',b).onclick=closeSheet;
-  const go=async()=>{ const h=await sha256(inp.value); if(h===SET.pinDocs){ st.docsUnlocked=true; closeSheet(); onOk&&onOk(); } else { $('#pin_err',b).textContent='PIN incorrecto.'; inp.value=''; inp.focus(); } };
+  const go=async()=>{ const ok=$('#pin_ok',b); if(ok.disabled)return; ok.disabled=true; let good=false; try{ good=await verifyAndUnlock(inp.value); }catch(e){}
+    if(good===true){ closeSheet(); onOk&&onOk(); }
+    else { $('#pin_err',b).textContent = good==='quota' ? 'El PIN es correcto, pero no se pudo activar el cifrado: el almacenamiento está lleno. Libera espacio e inténtalo otra vez.' : 'PIN incorrecto.'; if(good!=='quota')inp.value=''; inp.focus(); ok.disabled=false; } };
   $('#pin_ok',b).onclick=go; inp.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); go(); } };
 }
 function openPinSet(onDone){
-  const tiene=!!SET.pinDocs;
+  if(!hasCrypto()){ alert('Este navegador no permite el cifrado seguro (hace falta una conexión segura, https).'); return; }
+  const tiene=pinIsSet();
   openBottom('<div class="form-h">'+(tiene?'Cambiar o quitar PIN':'Proteger con PIN')+'</div>'+
-    '<p class="cl-hint" style="margin:.1rem 0 .7rem">Un PIN de 4 dígitos protege los documentos de recogida (DNI y fotos). Se guarda cifrado en tu móvil.</p>'+
+    '<p class="cl-hint" style="margin:.1rem 0 .7rem">Un PIN de 4 dígitos <b>cifra</b> los documentos de recogida (DNI y fotos) en tu móvil: solo se ven con el PIN. ⚠️ Si lo olvidas, no se podrán recuperar.</p>'+
     (tiene?'<label class="fl">PIN actual<input id="p_old" type="password" inputmode="numeric" maxlength="8" autocomplete="off"></label>':'')+
     '<label class="fl">Nuevo PIN (4 dígitos)<input id="p_new" type="password" inputmode="numeric" maxlength="8" autocomplete="off" placeholder="••••"></label>'+
     '<div class="pin-err" id="p_err"></div>'+
     '<div class="form-actions">'+(tiene?'<button class="btn danger" id="p_del">Quitar PIN</button>':'')+'<button class="btn ghost" id="p_c">Cancelar</button><button class="btn primary" id="p_ok">Guardar</button></div>', false);
   const b=$('#sheetBody'); $('#p_c',b).onclick=closeSheet; const err=m=>{ $('#p_err',b).textContent=m; };
-  const chkOld=async()=>{ if(!tiene)return true; const h=await sha256($('#p_old',b).value); if(h!==SET.pinDocs){ err('El PIN actual no es correcto.'); return false; } return true; };
-  const del=$('#p_del',b); if(del)del.onclick=async()=>{ if(!(await chkOld()))return; SET.pinDocs=''; saveSet(); st.docsUnlocked=true; closeSheet(); onDone&&onDone(); };
-  $('#p_ok',b).onclick=async()=>{ if(!(await chkOld()))return; const nv=$('#p_new',b).value.trim(); if(!/^\d{4,8}$/.test(nv)){ err('El PIN debe tener entre 4 y 8 dígitos.'); return; } SET.pinDocs=await sha256(nv); saveSet(); st.docsUnlocked=true; closeSheet(); onDone&&onDone(); };
+  const chkOld=async()=>{ if(!tiene)return true; const ok=await verifyAndUnlock($('#p_old',b).value); if(ok!==true && ok!=='quota'){ err('El PIN actual no es correcto.'); return false; } return true; };
+  const del=$('#p_del',b); if(del)del.onclick=async()=>{ if(!confirm('¿Quitar el PIN? Los documentos dejarán de estar cifrados.'))return; if(!(await chkOld()))return; if(await removePin()){ closeSheet(); onDone&&onDone(); } };
+  $('#p_ok',b).onclick=async()=>{ if(!(await chkOld()))return; const nv=$('#p_new',b).value.trim(); if(!/^\d{4,8}$/.test(nv)){ err('El PIN debe tener entre 4 y 8 dígitos.'); return; } if(await setNewPin(nv)){ closeSheet(); onDone&&onDone(); } };
 }
 function openFoto(src){ openBottom('<div class="form-h">Foto del DNI</div><img class="doc-full" src="'+src+'" alt="DNI"><div class="form-actions"><button class="btn ghost" id="f_c">Cerrar</button></div>', true); $('#f_c',$('#sheetBody')).onclick=closeSheet; }
 
@@ -357,9 +420,10 @@ function renderClase(app){
   if(g && st.alumno){ const al=findAl(g,st.alumno); if(al){ renderAlumnoDetail(app,g,al); return; } st.alumno=null; }
 
   const head = el('header','app-hd',
-    '<div class="brandrow"><h1 class="title">Mi <em>clase</em></h1>'+(g?'<span class="yr">'+escapeHtml(g)+'</span>':'')+'</div>'+
+    '<div class="brandrow"><h1 class="title">Mi <em>clase</em></h1>'+(g?'<button class="yr yr-btn" id="grpEdit" aria-label="Editar grupo">'+escapeHtml(g)+' ⚙</button>':'')+'</div>'+
     '<p class="sub">Tus alumnos, sus notas y el día a día del aula.</p>');
   app.appendChild(head);
+  const geb=$('#grpEdit',head); if(geb)geb.onclick=()=>groupEditForm(g);
 
   if(!CL.grupos.length){
     const em=el('div','empty','Aún no tienes ningún grupo.<br>Crea el tuyo (por ejemplo «3.º A») para empezar.');
@@ -548,7 +612,7 @@ function fillEvalCard(card,al,g,as,ev){
     const addWrap=el('span','noteadd');
     const inp=el('input'); inp.type='text'; inp.inputMode='decimal'; inp.placeholder='＋ nota'; inp.setAttribute('aria-label','Añadir nota a '+b.nombre);
     const redraw=()=>{ [...chips.querySelectorAll('.notechip')].forEach(n=>n.remove()); grades.forEach((val,idx)=>{ const t=el('span','notechip', escapeHtml(String(val))+' ✕'); t.onclick=()=>{ grades.splice(idx,1); saveCL(); redraw(); upd(); updEval(); }; chips.insertBefore(t,addWrap); }); };
-    const commit=()=>{ const v=inp.value.trim(); if(v==='')return; grades.push(v); saveCL(); redraw(); upd(); updEval(); inp.value=''; inp.focus(); };
+    const commit=()=>{ const v=inp.value.trim(); if(v==='')return; const nv=nnum(v); if(nv==null||nv<0||nv>10){ inp.classList.add('bad'); return; } inp.classList.remove('bad'); grades.push(v); saveCL(); redraw(); upd(); updEval(); inp.value=''; inp.focus(); };
     inp.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); commit(); } };
     inp.onblur=commit;
     addWrap.appendChild(inp); chips.appendChild(addWrap);
@@ -593,28 +657,44 @@ function baremoForm(g,as){
       const s=clean.reduce((a,x)=>a+x.peso,0);
       if(s>100){ alert('Los % no pueden pasar de 100.\nAhora suman '+s+'% — quita '+(s-100)+'.'); return; }
       if(s<100){ alert('Los % tienen que sumar 100.\nAhora suman '+s+'% — te faltan '+(100-s)+'.'); return; }
+      const keep=new Set(clean.map(x=>x.id)); const removed=baremosDe(g,as).map(bb=>bb.id).filter(id=>!keep.has(id));
+      if(removed.length){ let n=0; alumnosDe(g).forEach(a=>{ const na=a.notas&&a.notas[as]; if(na&&na.ev)['1','2','3'].forEach(ev=>{ if(na.ev[ev])removed.forEach(id=>{ if(na.ev[ev][id])n+=na.ev[ev][id].length; }); }); });
+        if(n>0 && !confirm('Vas a quitar categoría(s) con '+n+' nota(s) puestas. Esas notas se borrarán. ¿Continuar?')) return;
+        alumnosDe(g).forEach(a=>{ const na=a.notas&&a.notas[as]; if(na&&na.ev)['1','2','3'].forEach(ev=>{ if(na.ev[ev])removed.forEach(id=>{ delete na.ev[ev][id]; }); }); }); }
       CL.baremos=CL.baremos||{}; CL.baremos[g]=CL.baremos[g]||{}; CL.baremos[g][as]=clean; saveCL(); closeSheet(); render(); }; };
   openBottom(draw(),false); wire();
 }
 // ---- importar notas desde Excel (todos los alumnos de golpe) ----
-function normNom(s){ return String(s==null?'':s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\s+/g,' '); }
+function normNom(s){ return String(s==null?'':s).trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[.,;:]/g,' ').replace(/\s+/g,' ').trim(); }
 function tokKey(s){ return normNom(s).split(' ').filter(Boolean).sort().join(' '); }
 function analizarImport(g,rows){
-  const als=alumnosDe(g), byExact={}, byTok={};
-  als.forEach(a=>{ byExact[normNom(a.nombre)]=a; const tk=tokKey(a.nombre); if(tk)byTok[tk]=a; });
-  const matched=[], unmatched=[]; let ignored=0;
-  (rows||[]).forEach(r=>{ if(!r||!r.length)return; const nom=r[0]; const notas=r.slice(1).map(nnum).filter(n=>n!=null);
-    const al=byExact[normNom(nom)]||byTok[tokKey(nom)]||null;
+  const als=alumnosDe(g), byExact={}, byTok={}, ambE={}, ambT={};
+  als.forEach(a=>{ const ne=normNom(a.nombre); if(ne){ if(byExact[ne]!==undefined)ambE[ne]=true; byExact[ne]=a; } const tk=tokKey(a.nombre); if(tk){ if(byTok[tk]!==undefined)ambT[tk]=true; byTok[tk]=a; } });
+  const matched=[], unmatched=[], ambiguous=[]; let ignored=0, outrange=0;
+  (rows||[]).forEach(r=>{ if(!r||!r.length)return; const nom=r[0];
+    let notas=r.slice(1).map(nnum).filter(n=>n!=null); const before=notas.length; notas=notas.filter(n=>n>=0&&n<=10); outrange+=before-notas.length;
+    const ne=normNom(nom), tk=tokKey(nom);
+    // prioridad: nombre EXACTO único gana siempre; los tokens solo deciden si no hay exacto
+    let al=null;
+    if(ne && byExact[ne]!==undefined){
+      if(ambE[ne]){ if(String(nom==null?'':nom).trim()!=='')ambiguous.push(String(nom).trim()); return; }
+      al=byExact[ne];
+    } else if(tk && byTok[tk]!==undefined){
+      if(ambT[tk]){ if(String(nom==null?'':nom).trim()!=='')ambiguous.push(String(nom).trim()); return; }
+      al=byTok[tk];
+    }
     if(al){ if(notas.length)matched.push({al,notas}); else ignored++; }
     else if(notas.length && String(nom==null?'':nom).trim()!=='') unmatched.push(String(nom).trim());
     else ignored++; });
-  return {matched, unmatched, ignored};
+  return {matched, unmatched, ambiguous, ignored, outrange};
 }
 function importPreviewHtml(p){
-  if(!p.matched.length && !p.unmatched.length) return '<div class="im-err">No se han encontrado notas. Revisa que la 1ª columna sean nombres y las siguientes, notas.</div>';
+  if(!p.matched.length && !p.unmatched.length && !(p.ambiguous&&p.ambiguous.length)) return '<div class="im-err">No se han encontrado notas. Revisa que la 1ª columna sean nombres y las siguientes, notas.</div>';
   const nN=p.matched.reduce((a,m)=>a+m.notas.length,0); let h='';
   if(p.matched.length) h+='<div class="im-ok">✓ '+p.matched.length+' alumno'+(p.matched.length>1?'s':'')+' · '+nN+' nota'+(nN>1?'s':'')+' a importar</div>';
+  if(p.ambiguous&&p.ambiguous.length) h+='<div class="im-warn">⚠️ Nombres repetidos, se omiten para no mezclar notas ('+p.ambiguous.length+'): '+p.ambiguous.map(escapeHtml).join(', ')+'</div>';
   if(p.unmatched.length) h+='<div class="im-warn">⚠️ Sin coincidencia ('+p.unmatched.length+'): '+p.unmatched.map(escapeHtml).join(', ')+'</div>';
+  if(p.outrange) h+='<div class="im-warn">⚠️ '+p.outrange+' valor(es) fuera de 0–10 descartados (¿una columna de fechas o de faltas?).</div>';
   return h;
 }
 function importNotasForm(g){
@@ -635,11 +715,13 @@ function importNotasForm(g){
   $('#im_c',b).onclick=closeSheet;
   $('#im_file',b).onchange=async e=>{ const f=e.target.files&&e.target.files[0]; if(!f)return;
     prev.innerHTML='<div class="im-info">Leyendo…</div>'; okBtn.disabled=true;
-    try{ const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]];
+    try{ await ensureXLSX(); const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false});
       parsed=analizarImport(g,rows); prev.innerHTML=importPreviewHtml(parsed); okBtn.disabled=parsed.matched.length===0;
     }catch(err){ parsed=null; prev.innerHTML='<div class="im-err">No se pudo leer el archivo. Guárdalo como Excel (.xlsx) e inténtalo otra vez.</div>'; okBtn.disabled=true; } };
   okBtn.onclick=()=>{ if(!parsed||!parsed.matched.length)return; const ev=$('#im_ev',b).value, bid=barSel.value, as=asSel.value;
+    const total=parsed.matched.reduce((a,m)=>a+m.notas.length,0);
+    if(!confirm('Se AÑADIRÁN '+total+' nota(s) a la categoría elegida (se suman a las que ya haya, no las reemplazan). ¿Importar?'))return;
     let nN=0; parsed.matched.forEach(m=>{ const na=notaAsig(m.al,g,as); const arr=gradesOf(na,ev,bid); m.notas.forEach(v=>{ arr.push(String(v).replace('.',',')); nN++; }); });
     if(saveCLsafe()){ closeSheet(); render(); alert('✓ Importadas '+nN+' nota(s) a '+parsed.matched.length+' alumno(s).'+(parsed.unmatched.length?'\n\n⚠️ No se encontraron: '+parsed.unmatched.join(', '):'')); } };
 }
@@ -664,7 +746,7 @@ function renderDeberes(app,g){
     const c=el('div','ag-card'+(it.hecho?' done':''),
       '<div class="ag-emoji" style="background:var(--sky-bg)">📚</div>'+
       '<div class="ag-cbody"><div class="ag-t">'+escapeHtml(it.titulo)+'</div>'+
-        '<div class="ag-meta">'+(it.asig?'<span class="ag-chip" style="background:var(--sky-bg);color:#2f5686">'+escapeHtml(it.asig)+'</span> ':'')+
+        '<div class="ag-meta">'+(it.asig?'<span class="ag-chip" style="background:var(--sky-bg);color:var(--sky-ink)">'+escapeHtml(it.asig)+'</span> ':'')+
         (it.fecha?('Para el '+fechaCortaISO(it.fecha)):'Sin fecha')+(venc&&!it.hecho?' · vencido':'')+'</div></div>'+
       '<div class="ag-acts"><button class="ag-ic wa" aria-label="Compartir por WhatsApp">📲</button></div>');
     c.querySelector('.wa').onclick=e=>{ e.stopPropagation(); waShare('📚 Deberes '+g+(it.asig?' · '+it.asig:'')+':\n'+it.titulo+(it.fecha?'\nPara el '+fechaCortaISO(it.fecha):'')); };
@@ -699,6 +781,20 @@ function gForm(){
   $('#g_c',b).onclick=closeSheet;
   $('#g_ok',b).onclick=()=>{ const n=inp.value.trim(); if(!n){ inp.focus(); return; } if(!CL.grupos.includes(n))CL.grupos.push(n); st.grupo=n; st.alumno=null; st.claseView='alumnos'; saveCL(); closeSheet(); render(); };
 }
+function groupEditForm(g){
+  openBottom('<div class="form-h">Grupo · '+escapeHtml(g)+'</div>'+
+    '<label class="fl">Nombre del grupo<input id="ge_n" type="text" value="'+escapeHtml(g)+'" autocomplete="off"></label>'+
+    '<div class="form-actions"><button class="btn danger" id="ge_del">Borrar grupo</button><button class="btn ghost" id="ge_c">Cancelar</button><button class="btn primary" id="ge_ok">Guardar</button></div>', false);
+  const b=$('#sheetBody'); $('#ge_c',b).onclick=closeSheet;
+  $('#ge_del',b).onclick=()=>{ if(!confirm('¿Borrar el grupo «'+g+'» con TODOS sus alumnos, notas, deberes y salidas? No se puede deshacer.'))return;
+    CL.grupos=CL.grupos.filter(x=>x!==g); ['alumnos','asig','deberes','salidas','baremos'].forEach(kk=>{ if(CL[kk])delete CL[kk][g]; });
+    st.grupo=CL.grupos[0]||null; st.alumno=null; saveCL(); closeSheet(); render(); };
+  $('#ge_ok',b).onclick=()=>{ const nv=$('#ge_n',b).value.trim(); if(!nv){ $('#ge_n',b).focus(); return; } if(nv===g){ closeSheet(); return; }
+    if(CL.grupos.includes(nv)){ alert('Ya existe un grupo con ese nombre.'); return; }
+    CL.grupos=CL.grupos.map(x=>x===g?nv:x);
+    ['alumnos','asig','deberes','salidas','baremos'].forEach(kk=>{ if(CL[kk]&&CL[kk][g]!=null){ CL[kk][nv]=CL[kk][g]; delete CL[kk][g]; } });
+    if(st.grupo===g)st.grupo=nv; saveCL(); closeSheet(); render(); };
+}
 function alForm(g,al){
   const it=Object.assign({nombre:'',cumple:'',alergias:''}, al||{});
   openBottom('<div class="form-h">'+(al?'Editar alumno':'Nuevo alumno')+'</div>'+
@@ -708,7 +804,7 @@ function alForm(g,al){
     '<div class="form-actions">'+(al?'<button class="btn danger" id="a_del">Borrar</button>':'')+'<button class="btn ghost" id="a_can">Cancelar</button><button class="btn primary" id="a_ok">Guardar</button></div>', false);
   const b=$('#sheetBody'); const inp=$('#a_n',b); if(!al)setTimeout(()=>inp.focus(),60);
   $('#a_can',b).onclick=closeSheet;
-  const del=$('#a_del',b); if(del)del.onclick=()=>{ CL.alumnos[g]=alumnosDe(g).filter(a=>a.id!==al.id); saveCL(); if(st.alumno===al.id)st.alumno=null; closeSheet(); render(); };
+  const del=$('#a_del',b); if(del)del.onclick=()=>{ if(!confirm('¿Borrar a '+al.nombre+' y todos sus datos (notas, faltas, tutoría, autorizaciones)?'))return; CL.alumnos[g]=alumnosDe(g).filter(a=>a.id!==al.id); saveCL(); if(st.alumno===al.id)st.alumno=null; closeSheet(); render(); };
   $('#a_ok',b).onclick=()=>{ const n=inp.value.trim(); if(!n){ inp.focus(); return; } const cumple=$('#a_c',b).value; const alg=$('#a_al',b).value.trim();
     if(al){ al.nombre=n; al.cumple=cumple; al.alergias=alg; } else { alumnosDe(g).push({id:nid('a'),nombre:n,cumple,alergias:alg,pos:0,neg:0,faltas:[],recogida:[],sitFam:'sin',sitFamNota:'',notas:{},tutoria:{},obs:''}); }
     saveCL(); closeSheet(); render(); };
@@ -725,12 +821,28 @@ function recForm(g,al,item,after){
   const b=$('#sheetBody'); let foto=it.foto;
   $('#r_c',b).onclick=closeSheet;
   $('#r_f',b).onchange=async e=>{ const f=e.target.files&&e.target.files[0]; if(!f)return; try{ foto=await comprimirFoto(f); $('#r_prev',b).innerHTML='<img class="doc-prev" src="'+foto+'" alt="DNI">'; }catch(err){ alert('No se pudo procesar la foto. Prueba con otra.'); } };
-  const del=$('#r_del',b); if(del)del.onclick=()=>{ const i=al.recogida.indexOf(item); if(i>=0)al.recogida.splice(i,1); saveCLsafe(); closeSheet(); after&&after(); };
-  $('#r_ok',b).onclick=()=>{ const n=$('#r_n',b).value.trim(); if(!n){ $('#r_n',b).focus(); return; }
-    const rec={id:item?item.id:nid('r'), nombre:n, parentesco:$('#r_p',b).value.trim(), dni:$('#r_d',b).value.trim(), foto:foto||''};
-    if(item){ const bak=Object.assign({},item); Object.assign(item,rec); if(!saveCLsafe()){ Object.assign(item,bak); return; } }
-    else { al.recogida.push(rec); if(!saveCLsafe()){ al.recogida.pop(); return; } }
-    closeSheet(); after&&after(); };
+  const del=$('#r_del',b); if(del)del.onclick=async()=>{ if(!confirm('¿Borrar a este familiar autorizado (y su foto del DNI)?'))return;
+    if(del.disabled)return; del.disabled=true;
+    try{
+      const bak=JSON.stringify(al.recogida||[]);
+      const i=al.recogida.findIndex(x=>x.id===item.id); if(i>=0)al.recogida.splice(i,1);
+      await encryptRecogida(al);
+      if(!saveCLsafe()){ al.recogida=JSON.parse(bak); await encryptRecogida(al); return; }
+      closeSheet(); after&&after();
+    } finally { del.disabled=false; } };
+  const okB=$('#r_ok',b);
+  okB.onclick=async()=>{ const n=$('#r_n',b).value.trim(); if(!n){ $('#r_n',b).focus(); return; }
+    if(okB.disabled)return; okB.disabled=true;
+    try{
+      const rec={id:item?item.id:nid('r'), nombre:n, parentesco:$('#r_p',b).value.trim(), dni:$('#r_d',b).value.trim(), foto:foto||''};
+      const bak=JSON.stringify(al.recogida||[]);
+      // siempre por id sobre el array VIGENTE (un revert anterior pudo reemplazar los objetos)
+      const cur=item ? al.recogida.find(x=>x.id===rec.id) : null;
+      if(cur){ Object.assign(cur,rec); } else { al.recogida.push(rec); }
+      await encryptRecogida(al);
+      if(!saveCLsafe()){ al.recogida=JSON.parse(bak); await encryptRecogida(al); return; }
+      closeSheet(); after&&after();
+    } finally { okB.disabled=false; } };
 }
 function asigForm(g){
   openBottom('<div class="form-h">Nueva asignatura</div>'+
@@ -752,7 +864,7 @@ function debForm(g,it){
     '<div class="form-actions">'+(it?'<button class="btn danger" id="d_del">Borrar</button>':'')+'<button class="btn ghost" id="d_c">Cancelar</button><button class="btn primary" id="d_ok">Guardar</button></div>', false);
   const b=$('#sheetBody');
   $('#d_c',b).onclick=closeSheet;
-  const del=$('#d_del',b); if(del)del.onclick=()=>{ CL.deberes[g]=deberesDe(g).filter(x=>x.id!==it.id); saveCL(); closeSheet(); render(); };
+  const del=$('#d_del',b); if(del)del.onclick=()=>{ if(!confirm('¿Borrar estos deberes?'))return; CL.deberes[g]=deberesDe(g).filter(x=>x.id!==it.id); saveCL(); closeSheet(); render(); };
   $('#d_ok',b).onclick=()=>{ const t=$('#d_t',b).value.trim(); if(!t){ $('#d_t',b).focus(); return; } const asig=$('#d_as',b).value, fecha=$('#d_f',b).value;
     if(it){ it.asig=asig; it.titulo=t; it.fecha=fecha; it.hecho=$('#d_h',b).checked; } else { deberesDe(g).push({id:nid('d'),asig,titulo:t,fecha,hecho:false}); }
     saveCL(); closeSheet(); render(); };
@@ -768,9 +880,9 @@ function salForm(g,it){
     '<div class="form-actions">'+(it?'<button class="btn danger" id="s_del">Borrar</button>':'')+'<button class="btn ghost" id="s_can">Cancelar</button><button class="btn primary" id="s_ok">Guardar</button></div>', false);
   const b=$('#sheetBody');
   $('#s_can',b).onclick=closeSheet;
-  const del=$('#s_del',b); if(del)del.onclick=()=>{ CL.salidas[g]=salidasDe(g).filter(x=>x.id!==it.id); saveCL(); closeSheet(); render(); };
+  const del=$('#s_del',b); if(del)del.onclick=()=>{ if(!confirm('¿Borrar esta salida?'))return; CL.salidas[g]=salidasDe(g).filter(x=>x.id!==it.id); saveCL(); closeSheet(); render(); };
   $('#s_ok',b).onclick=()=>{ const t=$('#s_t',b).value.trim(); if(!t){ $('#s_t',b).focus(); return; }
-    const rec={titulo:t,fecha:$('#s_f',b).value,lugar:$('#s_l',b).value.trim(),coste:$('#s_c',b).value.trim(),nota:$('#s_n',b).value.trim()};
+    const cst=nnum($('#s_c',b).value); const rec={titulo:t,fecha:$('#s_f',b).value,lugar:$('#s_l',b).value.trim(),coste:cst==null?'':String(cst).replace('.',','),nota:$('#s_n',b).value.trim()};
     if(it){ Object.assign(it,rec); } else { salidasDe(g).push(Object.assign({id:nid('s')},rec)); }
     saveCL(); closeSheet(); render(); };
 }
@@ -815,32 +927,41 @@ function masRow(ic,label,onclick){ const r=el('div','mas-row tap','<span class="
 // ---------- Herramienta: temporizador de aula ----------
 function fmtClock(s){ s=Math.max(0,s|0); return Math.floor(s/60)+':'+pad2(s%60); }
 function openTimer(){
-  let left=5*60, running=false;
+  let total=5*60, endAt=0, running=false;
   openBottom('<div class="form-h">Temporizador</div>'+
-    '<div class="tmr-display" id="tmr">'+fmtClock(left)+'</div>'+
+    '<div class="tmr-display" id="tmr">'+fmtClock(total)+'</div>'+
     '<div class="tmr-presets" id="tpre">'+[1,3,5,10].map(m=>'<button type="button" data-m="'+m+'">'+m+' min</button>').join('')+'</div>'+
     '<div class="form-actions"><button class="btn ghost" id="treset">Reiniciar</button><button class="btn primary" id="tgo">▶ Empezar</button></div>', false);
   const b=$('#sheetBody'); const disp=$('#tmr',b); const go=$('#tgo',b);
-  function stop(){ running=false; if(_tmrId){clearInterval(_tmrId);_tmrId=null;} go.textContent='▶ Empezar'; }
-  function tick(){ left--; disp.textContent=fmtClock(left); if(left<=0){ left=0; stop(); disp.classList.add('done'); disp.textContent='¡Tiempo!'; try{ navigator.vibrate&&navigator.vibrate([200,100,200]); }catch(e){} } }
-  b.querySelectorAll('#tpre button').forEach(x=>x.onclick=()=>{ stop(); left=(+x.dataset.m)*60; disp.classList.remove('done'); disp.textContent=fmtClock(left); });
-  go.onclick=()=>{ if(running){ stop(); } else { if(left<=0)return; running=true; go.textContent='⏸ Pausar'; disp.classList.remove('done'); _tmrId=setInterval(tick,1000); } };
-  $('#treset',b).onclick=()=>{ stop(); left=5*60; disp.classList.remove('done'); disp.textContent=fmtClock(left); };
+  // cuenta contra un instante objetivo (Date.now): no se desvía aunque se apague la pantalla
+  const remaining=()=> running ? Math.max(0, Math.round((endAt-Date.now())/1000)) : total;
+  const stop=()=>{ running=false; if(_tmrId){clearInterval(_tmrId);_tmrId=null;} go.textContent='▶ Empezar'; };
+  const tick=()=>{ const r=remaining(); disp.textContent=fmtClock(r); if(r<=0){ stop(); disp.classList.add('done'); disp.textContent='¡Tiempo!'; try{ navigator.vibrate&&navigator.vibrate([200,100,200]); }catch(e){} } };
+  b.querySelectorAll('#tpre button').forEach(x=>x.onclick=()=>{ stop(); total=(+x.dataset.m)*60; disp.classList.remove('done'); disp.textContent=fmtClock(total); });
+  go.onclick=()=>{ if(running){ total=remaining(); stop(); disp.textContent=fmtClock(total); } else { if(total<=0)return; endAt=Date.now()+total*1000; running=true; go.textContent='⏸ Pausar'; disp.classList.remove('done'); _tmrId=setInterval(tick,250); } };
+  $('#treset',b).onclick=()=>{ stop(); total=5*60; disp.classList.remove('done'); disp.textContent=fmtClock(total); };
 }
 
 // ---------- Herramienta: elegir alumno al azar ----------
 function openRandom(){
   const g=clGrupo(); const arr=g?alumnosDe(g):[];
   if(!arr.length){ openBottom('<div class="form-h">Elegir alumno al azar</div><div class="cl-hint" style="margin:0 0 14px">Primero añade tus alumnos en la pestaña «Clase».</div><div class="form-actions"><button class="btn primary" id="rc">Entendido</button></div>', false); $('#rc',$('#sheetBody')).onclick=closeSheet; return; }
-  const pick=()=>arr[Math.floor(Math.random()*arr.length)].nombre;
-  openBottom('<div class="form-h">Alumno al azar <span class="opt" style="font-weight:700;color:#b3aaa1">· '+escapeHtml(g)+'</span></div><div class="rnd-name" id="rn">'+escapeHtml(pick())+'</div><div class="form-actions"><button class="btn ghost" id="rcl">Cerrar</button><button class="btn primary" id="rag">🎲 Otra vez</button></div>', false);
+  // no repite hasta agotar la lista (bolsa) y excluye a los que faltan hoy
+  const hoy=isoOf(new Date());
+  const pool=arr.filter(a=>!(a.faltas&&a.faltas.includes(hoy)));
+  const src=pool.length?pool:arr;
+  let bag=[];
+  const pick=()=>{ if(!bag.length)bag=src.map(a=>a.nombre); return bag.splice(Math.floor(Math.random()*bag.length),1)[0]; };
+  const nExcl=arr.length-src.length;
+  openBottom('<div class="form-h">Alumno al azar <span class="opt" style="font-weight:700;color:#b3aaa1">· '+escapeHtml(g)+'</span></div><div class="rnd-name" id="rn">'+escapeHtml(pick())+'</div>'+(nExcl>0?'<p class="cl-hint" style="margin:0 0 12px">Se excluyen '+nExcl+' que faltan hoy.</p>':'')+'<div class="form-actions"><button class="btn ghost" id="rcl">Cerrar</button><button class="btn primary" id="rag">🎲 Otra vez</button></div>', false);
   const b=$('#sheetBody'); $('#rcl',b).onclick=closeSheet;
   $('#rag',b).onclick=()=>{ const n=$('#rn',b); n.textContent=pick(); bump(n); };
 }
 
 // ---------- Herramienta: copia de seguridad (exportar / importar) ----------
 const BK_KEYS=['horario_data','settings','agenda_items','clase_data'];
-function appBackup(){ const o={_app:'Super Profe',_v:1}; BK_KEYS.forEach(k=>{ const v=localStorage.getItem(k); if(v!=null)o[k]=v; }); return o; }
+const BK_VER=1;
+function appBackup(){ const o={_app:'Super Profe',_v:BK_VER}; BK_KEYS.forEach(k=>{ const v=localStorage.getItem(k); if(v!=null)o[k]=v; }); return o; }
 function bkStatus(b,msg,kind){ const s=$('#bk_st',b); if(!s)return; s.hidden=false; s.textContent=msg; s.className='status '+(kind||''); }
 function openBackup(){
   openBottom('<div class="form-h">Copia de seguridad</div>'+
@@ -856,11 +977,16 @@ function openBackup(){
     const a=document.createElement('a'); a.href=url; a.download='SuperProfe-copia.json'; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000); bkStatus(b,'✓ Copia descargada. Guárdala en un lugar seguro (Drive, correo…).','ok');
   }catch(e){ bkStatus(b,'✗ No se pudo crear la copia.','err'); } };
-  $('#bk_imp',b).onchange=async e=>{ const f=e.target.files[0]; if(!f)return; try{
-    const o=JSON.parse(await f.text()); if(!o||o._app!=='Super Profe') throw 0;
-    BK_KEYS.forEach(k=>{ if(o[k]!=null)localStorage.setItem(k,o[k]); });
-    bkStatus(b,'✓ Copia restaurada. Recargando…','ok'); setTimeout(()=>location.reload(),700);
-  }catch(err){ bkStatus(b,'✗ Ese archivo no es una copia válida de Super Profe.','err'); } };
+  $('#bk_imp',b).onchange=async e=>{ const f=e.target.files[0]; if(!f)return; let o;
+    try{ o=JSON.parse(await f.text()); }catch(err){ bkStatus(b,'✗ Ese archivo no es una copia válida de Super Profe.','err'); e.target.value=''; return; }
+    if(!o || o._app!=='Super Profe'){ bkStatus(b,'✗ Ese archivo no es una copia de Super Profe.','err'); e.target.value=''; return; }
+    if(typeof o._v==='number' && o._v>BK_VER){ bkStatus(b,'✗ La copia es de una versión más nueva de la app. Actualízala antes de restaurar.','err'); e.target.value=''; return; }
+    for(const k of BK_KEYS){ if(o[k]!=null && typeof o[k]!=='string'){ bkStatus(b,'✗ La copia está dañada (campo «'+k+'»).','err'); e.target.value=''; return; } }
+    if(!BK_KEYS.some(k=>o[k]!=null)){ bkStatus(b,'✗ La copia no contiene datos.','err'); e.target.value=''; return; }
+    if(!confirm('Vas a REEMPLAZAR todos los datos actuales (horario, agenda, notas y alumnos) por los de la copia.\n\nEsto no se puede deshacer. Si quieres conservar lo de ahora, pulsa Cancelar y descarga antes una copia.\n\n¿Restaurar?')){ e.target.value=''; return; }
+    try{ BK_KEYS.forEach(k=>{ if(o[k]!=null)localStorage.setItem(k,o[k]); });
+      bkStatus(b,'✓ Copia restaurada. Recargando…','ok'); setTimeout(()=>location.reload(),700);
+    }catch(err){ bkStatus(b,'✗ No se pudo restaurar (¿almacenamiento lleno?).','err'); e.target.value=''; } };
 }
 function openIdentity(){
   const ops=(D.profesores||[]).map(p=>'<option value="'+escapeHtml(p)+'"'+(p===SET.profe?' selected':'')+'>'+escapeHtml(p)+'</option>').join('');
@@ -872,8 +998,8 @@ function openIdentity(){
     '<label class="fl">Próximas vacaciones <span class="opt">(opcional)</span><input id="i_vac" type="date" value="'+(SET.vacaciones||'')+'"></label>'+
     '<div class="fl">¿Qué semana es esta? <span class="opt">(para el A/B del horario)</span></div>'+
     '<div class="tchips" id="i_wk">'+
-      '<button type="button" class="tchip" data-wk="A" aria-pressed="'+(curWk==='A')+'" style="--cb:var(--sky-bg);--ci:#2f5686">Semana A</button>'+
-      '<button type="button" class="tchip" data-wk="B" aria-pressed="'+(curWk==='B')+'" style="--cb:var(--sky-bg);--ci:#2f5686">Semana B</button>'+
+      '<button type="button" class="tchip" data-wk="A" aria-pressed="'+(curWk==='A')+'" style="--cb:var(--sky-bg);--ci:var(--sky-ink)">Semana A</button>'+
+      '<button type="button" class="tchip" data-wk="B" aria-pressed="'+(curWk==='B')+'" style="--cb:var(--sky-bg);--ci:var(--sky-ink)">Semana B</button>'+
     '</div>'+
     '<div class="form-actions"><button class="btn ghost" id="i_can">Cancelar</button><button class="btn primary" id="i_ok">Guardar</button></div>';
   openBottom(html,false);
@@ -918,8 +1044,8 @@ function renderGeneral(app){
   const drawWho = () => {
     $('#whoName',who).textContent = st.sel;
     const m = $('#whoMeta',who);
-    if(st.mode==='aula') m.innerHTML = 'Tutor/a: <b>'+(tutorOf(st.sel)||'—')+'</b> · 22,5 h lectivas';
-    else { const au=aulaOfTutor(st.sel); m.innerHTML = (au?'Tutor/a de <b>'+au+'</b> · ':'Profesor/a · ')+fmtH(profHours(st.sel))+' h/sem'; }
+    if(st.mode==='aula') m.innerHTML = 'Tutor/a: <b>'+escapeHtml(tutorOf(st.sel)||'—')+'</b> · 22,5 h lectivas';
+    else { const au=aulaOfTutor(st.sel); m.innerHTML = (au?'Tutor/a de <b>'+escapeHtml(au)+'</b> · ':'Profesor/a · ')+fmtH(profHours(st.sel))+' h/sem'; }
   };
   const drawNav = () => {
     st.wk = weekLetter(st.weekMon);
@@ -950,7 +1076,7 @@ function renderGeneral(app){
     D.aulas.forEach(a=>['A','B'].forEach(w=>Object.values(D.aula[a][w]).forEach(v=>codes.add(v.ar))));
     let h='<h3>Asignaturas del centro</h3>';
     [...codes].sort((x,y)=>ar(x).name.localeCompare(ar(y).name)).forEach(code=>{ const a=ar(code);
-      h+='<div class="legrow"><span class="legsw" style="background:'+a.bg+'"></span><div><b>'+a.name+'</b> <span>('+code+')</span></div></div>'; });
+      h+='<div class="legrow"><span class="legsw" style="background:'+a.bg+'"></span><div><b>'+escapeHtml(a.name)+'</b> <span>('+escapeHtml(code)+')</span></div></div>'; });
     $('#legendInner',legend).innerHTML=h;
   }
   refresh();
@@ -975,7 +1101,7 @@ function buildLoad(box){
   const drop = $('#drop',box);
   drop.onkeydown = e => { if(e.key==='Enter'||e.key===' '){ e.preventDefault(); file.click(); } };
   file.onchange = e => { if(e.target.files[0]) handleFile(e.target.files[0]); };
-  const rb = $('#reset',box); if(rb) rb.onclick = resetData;
+  const rb = $('#reset',box); if(rb) rb.onclick = ()=>{ if(confirm('¿Volver al horario original? Se quitará el Excel que cargaste. (Tus notas y alumnos no se tocan.)')) resetData(); };
   if(usingCustom()) setStatus('Horario cargado: '+D.aulas.length+' aulas.', 'ok');
 }
 function setStatus(msg,kind){ const s=$('#status'); if(!s)return; s.hidden=false; s.textContent=msg; s.className='status '+(kind||''); }
@@ -1016,7 +1142,7 @@ function buildFromWorkbook(wb){
     const box = {A:{}, B:{}};
     for(let r=headRow+1; r<=range.e.r; r++){
       const c0 = ws[XLSX.utils.encode_cell({r,c:0})];
-      const ini = _t(c0&&c0.v).split('-')[0].trim();
+      const ini = _t(c0&&c0.v).split('-')[0].trim().replace(/^0(\d)/,'$1');
       const sid = byIni[ini]; if(!sid) continue;
       for(let d=0; d<5; d++){ const col=dayCols[d]; if(col==null) continue;
         const cell = ws[XLSX.utils.encode_cell({r,c:col})];
@@ -1059,6 +1185,11 @@ function buildFromWorkbook(wb){
 }
 function validData(x){ return x && x.aula && x.prof && Array.isArray(x.aulas) && x.aulas.length && Array.isArray(x.sesiones); }
 
+// carga el lector de Excel (950 KB) solo cuando hace falta, no en cada arranque
+let _xlsxP=null;
+function ensureXLSX(){ if(typeof XLSX!=='undefined')return Promise.resolve(); if(_xlsxP)return _xlsxP;
+  _xlsxP=new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='xlsx.full.min.js'; s.onload=()=>res(); s.onerror=()=>{ _xlsxP=null; rej(new Error('No se pudo cargar el lector de Excel.')); }; document.head.appendChild(s); });
+  return _xlsxP; }
 async function handleFile(file){
   setStatus('Leyendo «'+file.name+'»…');
   try{
@@ -1067,7 +1198,7 @@ async function handleFile(file){
       nd = JSON.parse(await file.text());
       if(!validData(nd)) throw new Error('El JSON no tiene el formato de horario esperado.');
     } else {
-      if(typeof XLSX==='undefined') throw new Error('No se pudo cargar el lector de Excel.');
+      await ensureXLSX();
       nd = buildFromWorkbook(XLSX.read(await file.arrayBuffer(), {type:'array'}));
       if(!validData(nd)) throw new Error('No pude leer el horario del Excel.');
     }
@@ -1092,7 +1223,7 @@ const TIPOS = {
 const TIPO_ORDER = ['examen','tarea','nota','cita','actividad'];
 let AG = (()=>{ try{ return JSON.parse(localStorage.getItem('agenda_items')||'[]'); }catch(e){ return []; } })();
 const saveAgenda = () => { try{ localStorage.setItem('agenda_items', JSON.stringify(AG)); }catch(e){} };
-const escapeHtml = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const escapeHtml = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const pad2 = n => String(n).padStart(2,'0');
 const keyDate = it => new Date(it.fecha+'T'+(it.hora||'00:00')).getTime();
 // casillas del horario con un examen/tarea marcado, por área+día+aula.
@@ -1101,7 +1232,7 @@ function cellMarkKeys(weekMon){
   let lo=-Infinity, hi=Infinity; const t0=startToday();
   if(weekMon){ lo=weekMon.getTime(); const fri=addDays(weekMon,4); hi=new Date(fri.getFullYear(),fri.getMonth(),fri.getDate(),23,59,59).getTime(); }
   const s=new Set();
-  AG.forEach(it=>{ if(!it.ref)return; const k=keyDate(it); if(k<lo||k>hi)return; if(!weekMon && k<t0)return; s.add(it.ref.ar+'|'+it.ref.d+'|'+it.ref.aula); });
+  AG.forEach(it=>{ if(!it.ref)return; const k=keyDate(it); if(k<lo||k>hi)return; if(k<t0)return; s.add(it.ref.ar+'|'+it.ref.d+'|'+it.ref.aula); });
   return s;
 }
 function diaRelativo(fecha){
@@ -1119,7 +1250,7 @@ function renderAgenda(app){
   const prox=AG.filter(i=>keyDate(i)>=startToday());
   const head=el('header','app-hd',
     '<div class="brandrow"><h1 class="title">Mi <em>agenda</em></h1>'+(prox.length?'<span class="yr">'+prox.length+' PRÓX.</span>':'')+'</div>'+
-    '<p class="sub">Exámenes, tareas, notas, citas y actividades — con aviso el día antes y 1 h antes.</p>');
+    '<p class="sub">Exámenes, tareas, notas, citas y actividades — con aviso el día antes (y 1 h antes si pones hora).</p>');
   app.appendChild(head);
   const add=el('button','ag-new','＋ Nueva entrada'); add.onclick=()=>openForm(); app.appendChild(add);
   const seg=el('div','seg clseg','<button data-v="lista" aria-selected="'+(st.agView!=='mes')+'">🗓️ Lista</button><button data-v="mes" aria-selected="'+(st.agView==='mes')+'">📅 Mes</button>');
@@ -1151,7 +1282,7 @@ function renderAgendaLista(app){
   section('Próximos', prox, false);
   section('Pasados', pasados, true);
   wireAgCards(wrap);
-  app.appendChild(el('footer','foot','<div><b>Los avisos</b> se guardan en el Calendario del móvil: al tocar 📅 se abre para «añadir» y el teléfono te avisa el día antes y 1 h antes.</div>'));
+  app.appendChild(el('footer','foot','<div><b>Los avisos</b> se guardan en el Calendario del móvil: al tocar 📅 se abre para «añadir» y el teléfono te avisa el día antes (y 1 h antes si el evento tiene hora).</div>'));
 }
 function renderAgendaMes(app){
   if(!st.agMonth) st.agMonth=new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -1161,8 +1292,8 @@ function renderAgendaMes(app){
     '<div class="wkn-mid"><div class="wkn-range">'+cap(MESES[m])+' '+y+'</div></div>'+
     '<button class="wkn-arrow" id="mNext" aria-label="Mes siguiente">›</button>';
   app.appendChild(nav);
-  $('#mPrev',nav).onclick=()=>{ st.agMonth=new Date(y,m-1,1); render(); };
-  $('#mNext',nav).onclick=()=>{ st.agMonth=new Date(y,m+1,1); render(); };
+  $('#mPrev',nav).onclick=()=>{ st.agDay=null; st.agMonth=new Date(y,m-1,1); render(); };
+  $('#mNext',nav).onclick=()=>{ st.agDay=null; st.agMonth=new Date(y,m+1,1); render(); };
   const byDay={}; AG.forEach(it=>{ (byDay[it.fecha]=byDay[it.fecha]||[]).push(it); });
   const wrap=el('div','mcal-wrap'); app.appendChild(wrap);
   const chead=el('div','mcal-head'); ['L','M','X','J','V','S','D'].forEach(d=>chead.appendChild(el('span',null,d))); wrap.appendChild(chead);
@@ -1215,7 +1346,7 @@ function openForm(item){
     '<div class="frow"><label class="fl">Fecha<input id="f_fec" type="date" value="'+(it.fecha||'')+'"></label>'+
       '<label class="fl">Hora <span class="opt">(opcional)</span><input id="f_hor" type="time" value="'+(it.hora||'')+'"></label></div>'+
     '<label class="fl">Nota<textarea id="f_det" rows="2" placeholder="Detalles…">'+escapeHtml(it.detalle)+'</textarea></label>'+
-    '<label class="chk"><input id="f_avi" type="checkbox"'+(it.avisar?' checked':'')+'> Avísame el día antes y 1 h antes</label>'+
+    '<label class="chk"><input id="f_avi" type="checkbox"'+(it.avisar?' checked':'')+'> Avísame el día antes (y 1 h antes si pones hora)</label>'+
     '<div class="form-actions">'+
       (it.id?'<button class="btn danger" id="f_del">Borrar</button>':'')+
       '<button class="btn ghost" id="f_can">Cancelar</button>'+
@@ -1226,7 +1357,7 @@ function openForm(item){
   let tipo=it.tipo;
   body.querySelectorAll('.tchip').forEach(b=>b.onclick=()=>{ tipo=b.dataset.tipo; body.querySelectorAll('.tchip').forEach(x=>x.setAttribute('aria-pressed', x===b)); });
   $('#f_can',body).onclick=closeSheet;
-  const del=$('#f_del',body); if(del)del.onclick=()=>{ AG=AG.filter(x=>x.id!==it.id); saveAgenda(); closeSheet(); render(); };
+  const del=$('#f_del',body); if(del)del.onclick=()=>{ if(!confirm('¿Borrar «'+it.titulo+'» de la agenda?'))return; AG=AG.filter(x=>x.id!==it.id); saveAgenda(); closeSheet(); render(); };
   $('#f_ok',body).onclick=()=>{
     const titulo=$('#f_tit',body).value.trim();
     const fecha=$('#f_fec',body).value;
@@ -1234,7 +1365,7 @@ function openForm(item){
     if(!fecha){ $('#f_fec',body).focus(); return; }
     const rec={ id: it.id || ('e'+Date.now()+Math.floor(Math.random()*1000)),
       tipo, titulo, fecha, hora:$('#f_hor',body).value, detalle:$('#f_det',body).value.trim(), avisar:$('#f_avi',body).checked };
-    if(it.ref) rec.ref=it.ref;
+    if(it.ref){ const wd=(parseISO(fecha).getDay()+6)%7; if(wd<=4) rec.ref=Object.assign({},it.ref,{d:wd}); }
     if(it.id){ AG[AG.findIndex(x=>x.id===it.id)]=rec; } else { AG.push(rec); }
     saveAgenda(); closeSheet(); render();
     if(rec.avisar) downloadICS(rec);
@@ -1242,7 +1373,7 @@ function openForm(item){
 }
 
 // ---------- recordatorios: archivo .ics para el calendario del móvil ----------
-function icsFold(line){ if(line.length<=73)return line; let out=line.slice(0,73), rest=line.slice(73); while(rest.length>72){ out+='\r\n '+rest.slice(0,72); rest=rest.slice(72); } return out+'\r\n '+rest; }
+function icsFold(line){ const enc=new TextEncoder(); if(enc.encode(line).length<=75)return line; let out='',cur='',cb=0; for(const ch of line){ const b=enc.encode(ch).length; const lim=out?74:75; if(cb+b>lim){ out+=(out?'\r\n ':'')+cur; cur=ch; cb=b; } else { cur+=ch; cb+=b; } } out+=(out?'\r\n ':'')+cur; return out; }
 function icsFor(it){
   const esc=s=>String(s==null?'':s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');
   const n=new Date();
@@ -1250,7 +1381,7 @@ function icsFor(it){
   const [Y,M,D]=it.fecha.split('-').map(Number);
   const t=TIPOS[it.tipo]||TIPOS.nota;
   const summary=esc(t.emoji+' '+(it.titulo||t.label));
-  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Horarios May//Agenda//ES','CALSCALE:GREGORIAN','BEGIN:VEVENT','UID:'+(it.id||('e'+stamp))+'@horarios-may','DTSTAMP:'+stamp];
+  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Super Profe//Agenda//ES','CALSCALE:GREGORIAN','BEGIN:VEVENT','UID:'+(it.id||('e'+stamp))+'@super-profe','DTSTAMP:'+stamp];
   let alarms=[];
   if(it.hora){
     const [h,mi]=it.hora.split(':').map(Number);
@@ -1278,7 +1409,7 @@ function downloadICS(it){
     a.download=(it.titulo||'evento').replace(/[^\wáéíóúñÁÉÍÓÚÑ\- ]+/g,'').trim().replace(/\s+/g,'_').slice(0,40)+'.ics';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),2000);
-  }catch(e){}
+  }catch(e){ alert('No se pudo crear el recordatorio en este dispositivo.'); }
 }
 
 // ---------- navegación ----------
@@ -1288,23 +1419,37 @@ function setTab(tab){
   render();
 }
 
-// ---------- instalación (Android/Chrome) ----------
+// ---------- instalación (Android/Chrome + iPhone/Safari) ----------
 let deferredPrompt=null;
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone===true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent||'') || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+const installDismissed = () => { try{ return !!localStorage.getItem('installDismissed'); }catch(e){ return false; } };
 function showInstall(v){ const b=$('#installBanner'); if(b) b.hidden = !v || isStandalone(); }
-window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt=e; showInstall(true); });
+function showIOSHint(){ const b=$('#installBanner'); if(!b)return; const bt=$('#installBtn'); if(bt)bt.hidden=true; const tx=b.querySelector('.ib-tx'); if(tx)tx.innerHTML='<b>Instala Super Profe</b><span>Toca Compartir ⬆ y «Añadir a pantalla de inicio»</span>'; b.hidden=false; }
+window.addEventListener('beforeinstallprompt', e=>{ e.preventDefault(); deferredPrompt=e; if(!installDismissed()) showInstall(true); });
 window.addEventListener('appinstalled', ()=>{ deferredPrompt=null; showInstall(false); });
 
 // ---------- init ----------
 document.querySelectorAll('.nav button').forEach(b=> b.onclick=()=>setTab(b.dataset.tab));
-$('#scrim').onclick = closeSheet;
-$('#sheetClose').onclick = closeSheet;
-document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeSheet(); });
+$('#scrim').onclick = tryCloseSheet;
+$('#sheetClose').onclick = tryCloseSheet;
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') tryCloseSheet(); });
+// la tarjeta "Ahora" de Inicio se mantiene al día (cada minuto y al volver a la app)
+setInterval(()=>{ if(st.tab==='inicio' && !$('#sheet').classList.contains('on')) render(); }, 60000);
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && st.tab==='inicio' && !$('#sheet').classList.contains('on')) render(); });
 const ib=$('#installBtn'); if(ib) ib.onclick=async()=>{ if(!deferredPrompt)return; deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt=null; showInstall(false); };
-const ic=$('#installClose'); if(ic) ic.onclick=()=>showInstall(false);
+const ic=$('#installClose'); if(ic) ic.onclick=()=>{ try{ localStorage.setItem('installDismissed','1'); }catch(e){} showInstall(false); };
+if(isIOS() && !isStandalone() && !installDismissed()) showIOSHint();
 
 setTab('inicio');
 
 if('serviceWorker' in navigator){
+  const hadController = !!navigator.serviceWorker.controller;
+  let _reloading=false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(!hadController || _reloading) return;                 // no recargar en la primera instalación
+    const sh=$('#sheet'); if(sh && sh.classList.contains('on')) return;  // ni con un formulario abierto
+    _reloading=true; location.reload();                     // recoge la versión nueva tras un despliegue
+  });
   window.addEventListener('load', ()=> navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 }
